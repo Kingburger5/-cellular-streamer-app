@@ -59,7 +59,7 @@ function AudioPlayer({ fileContent }: { fileContent: FileContent }) {
     return (
         <div className="flex flex-col items-center justify-center h-full p-4">
             <Music className="w-24 h-24 text-primary mb-4" />
-            <h3 className="text-lg font-medium mb-2">{fileContent.name}</h3>
+            <h3 className="text-lg font-medium mb-2">{fileContent.name.substring(fileContent.name.indexOf('-') + 1)}</h3>
             <audio controls src={audioSrc} className="w-full max-w-md">
                 Your browser does not support the audio element.
             </audio>
@@ -78,7 +78,7 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
 
   return (
     <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
-      <TabsList className={`grid w-full ${hasVisualization && hasPrettyView ? "grid-cols-3" : "grid-cols-2"} mb-4`}>
+      <TabsList className={`grid w-full ${hasVisualization && hasPrettyView ? "grid-cols-3" : hasVisualization || hasPrettyView ? "grid-cols-2" : "grid-cols-1"} mb-4`}>
         {hasVisualization && <TabsTrigger value="visualize">Visualize</TabsTrigger>}
         {hasPrettyView && (
            <TabsTrigger value="pretty">Pretty</TabsTrigger>
@@ -87,8 +87,7 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
       </TabsList>
        {hasVisualization && (
         <TabsContent value="visualize" className="flex-grow h-0">
-          {isDataVis && <DataVisualizer fileContent={fileContent} />}
-          {isAudio && <AudioPlayer fileContent={fileContent} />}
+          {isAudio ? <AudioPlayer fileContent={fileContent} /> : <DataVisualizer fileContent={fileContent} />}
         </TabsContent>
       )}
       {hasPrettyView && (

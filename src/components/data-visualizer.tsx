@@ -5,7 +5,7 @@ import type { FileContent } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning } from 'lucide-react';
 
 interface DataPoint {
   timestamp: string;
@@ -15,7 +15,7 @@ interface DataPoint {
   flybys: number;
 }
 
-const parseData = (file: FileContent): DataPoint[] => {
+const parseData = (file: FileContent): DataPoint[] | null => {
   try {
     if (file.extension === '.json') {
       const data = JSON.parse(file.content);
@@ -23,13 +23,14 @@ const parseData = (file: FileContent): DataPoint[] => {
     }
     if (file.extension === '.csv') {
       const rows = file.content.split('\n').filter(Boolean);
+       if (rows.length < 2) return [];
       const headers = rows[0].split(',').map(h => h.trim());
       const body = rows.slice(1);
       return body.map(row => {
         const values = row.split(',');
         const obj: any = {};
         headers.forEach((header, i) => {
-          const value = values[i].trim();
+          const value = values[i]?.trim();
           const numValue = parseFloat(value);
           obj[header] = isNaN(numValue) ? value : numValue;
         });
@@ -38,19 +39,32 @@ const parseData = (file: FileContent): DataPoint[] => {
     }
   } catch (e) {
     console.error("Failed to parse data:", e);
-    return [];
+    return null;
   }
-  return [];
+  return null;
 };
 
 
 export function DataVisualizer({ fileContent }: { fileContent: FileContent }) {
   const data = useMemo(() => parseData(fileContent), [fileContent]);
 
-  if (!data || data.length === 0) {
+  if (data === null) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        Could not parse data or file is empty. Ensure it's valid JSON or CSV with headers like: timestamp, latitude, longitude, temperature, flybys.
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
+        <FileWarning className="w-12 h-12 mb-4" />
+        <h3 className="font-semibold">No Visualization Available</h3>
+        <p className="text-sm">This file type cannot be visualized as data.</p>
+        <p className="text-xs mt-2">Try the 'Pretty' or 'Raw' tabs for other views.</p>
+      </div>
+    );
+  }
+  
+  if (data.length === 0) {
+      return (
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
+        <FileWarning className="w-12 h-12 mb-4" />
+        <h3 className="font-semibold">Could not parse data</h3>
+         <p className="text-sm">Ensure the file is valid JSON or CSV with headers like: timestamp, latitude, longitude, temperature, flybys.</p>
       </div>
     );
   }
