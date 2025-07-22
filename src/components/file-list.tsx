@@ -9,10 +9,12 @@ import {
   SidebarMenuButton,
   SidebarTrigger,
   SidebarContent,
+  SidebarFooter
 } from "@/components/ui/sidebar";
 import { Button } from "./ui/button";
 import { RefreshCw, Antenna } from "lucide-react";
 import { FileIcon } from "./file-icon";
+import { FileUploader } from "./file-uploader";
 
 interface FileListProps {
   files: UploadedFile[];
@@ -20,9 +22,10 @@ interface FileListProps {
   onSelectFile: (name: string) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
+  onUploadComplete: () => void;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete }: FileListProps) {
   return (
     <>
       <SidebarHeader>
@@ -41,7 +44,7 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
                 Refresh Files
             </Button>
         </div>
-        <SidebarMenu>
+        <SidebarMenu className="flex-grow">
           {files.map((file) => (
             <SidebarMenuItem key={file.name}>
               <SidebarMenuButton
@@ -67,6 +70,9 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
           )}
         </SidebarMenu>
       </SidebarContent>
+      <SidebarFooter>
+        <FileUploader onUploadComplete={onUploadComplete} />
+      </SidebarFooter>
     </>
   );
 }

@@ -24,16 +24,33 @@ export function MainView({ initialFiles }: MainViewProps) {
 
   const { toast } = useToast();
 
-  const handleRefresh = useCallback(() => {
-    startRefreshTransition(async () => {
+  const handleRefresh = useCallback(async (selectFile?: string) => {
       const refreshedFiles = await getFilesAction();
       setFiles(refreshedFiles);
-      toast({
-        title: "File list updated",
-        description: `Found ${refreshedFiles.length} files.`,
-      });
-    });
+      if (!selectFile) {
+        toast({
+          title: "File list updated",
+          description: `Found ${refreshedFiles.length} files.`,
+        });
+      }
+      return refreshedFiles;
   }, [toast]);
+
+  const handleUploadComplete = useCallback(async () => {
+    startRefreshTransition(async () => {
+        toast({
+            title: "Upload Successful",
+            description: "Your file has been uploaded and processed.",
+        });
+        const refreshedFiles = await handleRefresh();
+        if (refreshedFiles.length > 0) {
+            // Find the newest file to select it
+            const newFile = refreshedFiles.reduce((latest, file) => new Date(file.uploadDate) > new Date(latest.uploadDate) ? file : latest);
+            handleSelectFile(newFile.name);
+        }
+    });
+  }, [toast, handleRefresh]);
+
 
   const handleSelectFile = useCallback((name: string) => {
     setSelectedFileName(name);
@@ -72,15 +89,22 @@ export function MainView({ initialFiles }: MainViewProps) {
     });
   }, [toast]);
 
+  const onRefresh = useCallback(() => {
+    startRefreshTransition(async () => {
+        await handleRefresh();
+    });
+  }, [handleRefresh]);
+
   return (
     <SidebarProvider>
-      <Sidebar>
+      <Sidebar className="flex flex-col">
         <FileList
           files={files}
           selectedFile={selectedFileName}
           onSelectFile={handleSelectFile}
-          onRefresh={handleRefresh}
+          onRefresh={onRefresh}
           isRefreshing={isRefreshing}
+          onUploadComplete={handleUploadComplete}
         />
       </Sidebar>
       <SidebarInset className="p-0 h-screen overflow-hidden">
