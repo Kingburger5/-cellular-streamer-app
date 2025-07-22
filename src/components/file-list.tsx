@@ -26,6 +26,11 @@ interface FileListProps {
 }
 
 export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete }: FileListProps) {
+  
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleString("en-US", { timeZone: "UTC" });
+  }
+
   return (
     <>
       <SidebarHeader>
@@ -57,7 +62,7 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
                   <span className="truncate flex-1 text-left">{file.name.substring(file.name.indexOf('-') + 1)}</span>
                 </div>
                 <div className="text-xs text-muted-foreground w-full mt-1 flex justify-between">
-                    <span>{new Date(file.uploadDate).toLocaleString()}</span>
+                    <span>{formatDate(file.uploadDate)}</span>
                     <span>{formatBytes(file.size)}</span>
                 </div>
               </SidebarMenuButton>
