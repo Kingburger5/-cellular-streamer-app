@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "./ui/scroll-area";
+import { DataVisualizer } from "./data-visualizer";
 
 function CsvViewer({ content }: { content: string }) {
   const rows = content.split("\n").filter(Boolean);
@@ -55,15 +56,22 @@ function TxtViewer({ content }: { content: string }) {
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
   const hasPrettyView = fileContent.extension === ".json" || fileContent.extension === ".csv";
+  const hasVisualization = hasPrettyView;
 
   return (
-    <Tabs defaultValue={hasPrettyView ? "pretty" : "raw"} className="flex flex-col h-full">
-      <TabsList className="grid w-full grid-cols-2 mb-4">
+    <Tabs defaultValue={hasVisualization ? "visualize" : (hasPrettyView ? "pretty" : "raw")} className="flex flex-col h-full">
+      <TabsList className={`grid w-full ${hasVisualization ? "grid-cols-3" : "grid-cols-2"} mb-4`}>
+        {hasVisualization && <TabsTrigger value="visualize">Visualize</TabsTrigger>}
         {hasPrettyView ? (
            <TabsTrigger value="pretty">Pretty</TabsTrigger>
         ) : <div />}
         <TabsTrigger value="raw">Raw</TabsTrigger>
       </TabsList>
+       {hasVisualization && (
+        <TabsContent value="visualize" className="flex-grow h-0">
+          <DataVisualizer fileContent={fileContent} />
+        </TabsContent>
+      )}
       {hasPrettyView && (
          <TabsContent value="pretty" className="flex-grow h-0">
           {fileContent.extension === ".csv" && <CsvViewer content={fileContent.content} />}
