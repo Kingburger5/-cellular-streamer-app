@@ -72,3 +72,24 @@ export async function generateSummaryAction(input: {
     return { error: "Failed to generate summary." };
   }
 }
+
+export async function deleteFileAction(
+  filename: string
+): Promise<{ success: true } | { error: string }> {
+  try {
+    const sanitizedFilename = path.basename(filename);
+    if (sanitizedFilename !== filename) {
+      throw new Error("Invalid filename.");
+    }
+
+    const filePath = path.join(UPLOAD_DIR, sanitizedFilename);
+    await fs.unlink(filePath);
+    return { success: true };
+  } catch (error) {
+    console.error(`Error deleting file ${filename}:`, error);
+    if (error instanceof Error) {
+       return { error: `Failed to delete file: ${error.message}` };
+    }
+    return { error: "Failed to delete file." };
+  }
+}

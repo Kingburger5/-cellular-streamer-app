@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useCallback } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
-import { getFilesAction, getFileContentAction, generateSummaryAction } from "@/app/actions";
+import { getFilesAction, getFileContentAction, generateSummaryAction, deleteFileAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
 import { FileList } from "./file-list";
 import { FileDisplay } from "./file-display";
@@ -89,6 +89,31 @@ export function MainView({ initialFiles }: MainViewProps) {
     });
   }, [toast]);
 
+  const handleDeleteFile = useCallback((name: string) => {
+     startRefreshTransition(async () => {
+        const result = await deleteFileAction(name);
+        if (result.success) {
+            toast({
+                title: "File Deleted",
+                description: `Successfully deleted ${name.substring(name.indexOf('-') + 1)}.`,
+            });
+            if (selectedFileName === name) {
+                setSelectedFileName(null);
+                setFileContent(null);
+                setSummary(null);
+                setError(null);
+            }
+            await handleRefresh();
+        } else {
+            toast({
+                variant: "destructive",
+                title: "Delete Failed",
+                description: result.error,
+            });
+        }
+     });
+  }, [toast, handleRefresh, selectedFileName]);
+
   const onRefresh = useCallback(() => {
     startRefreshTransition(async () => {
         await handleRefresh();
@@ -105,6 +130,7 @@ export function MainView({ initialFiles }: MainViewProps) {
           onRefresh={onRefresh}
           isRefreshing={isRefreshing}
           onUploadComplete={handleUploadComplete}
+          onDeleteFile={handleDeleteFile}
         />
       </Sidebar>
       <SidebarInset className="p-0 h-screen overflow-hidden">

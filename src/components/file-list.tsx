@@ -7,14 +7,26 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuAction,
   SidebarTrigger,
   SidebarContent,
   SidebarFooter
 } from "@/components/ui/sidebar";
 import { Button } from "./ui/button";
-import { RefreshCw, Antenna } from "lucide-react";
+import { RefreshCw, Antenna, Trash2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { FileUploader } from "./file-uploader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface FileListProps {
   files: UploadedFile[];
@@ -23,12 +35,18 @@ interface FileListProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   onUploadComplete: () => void;
+  onDeleteFile: (name: string) => void;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete }: FileListProps) {
-  
+export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete, onDeleteFile }: FileListProps) {
+
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString("en-US", { timeZone: "UTC" });
+  }
+
+  const handleDelete = (e: React.MouseEvent, filename: string) => {
+    e.stopPropagation();
+    onDeleteFile(filename);
   }
 
   return (
@@ -66,6 +84,31 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
                     <span>{formatBytes(file.size)}</span>
                 </div>
               </SidebarMenuButton>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                   <SidebarMenuAction showOnHover>
+                      <Trash2 />
+                   </SidebarMenuAction>
+                </AlertDialogTrigger>
+                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the file
+                            <strong className="mx-1">{file.name.substring(file.name.indexOf('-') + 1)}</strong>
+                             and remove its data from our servers.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={(e) => handleDelete(e, file.name)} className="bg-destructive hover:bg-destructive/90">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
             </SidebarMenuItem>
           ))}
           {files.length === 0 && (
