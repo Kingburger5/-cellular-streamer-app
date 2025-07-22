@@ -50,10 +50,20 @@ export async function getFileContentAction(
     }
 
     const filePath = path.join(UPLOAD_DIR, sanitizedFilename);
-    const content = await fs.readFile(filePath, "utf-8");
     const extension = path.extname(sanitizedFilename).toLowerCase();
+    
+    let content: string;
+    let isBinary = false;
 
-    return { content, extension, name: sanitizedFilename };
+    if (['.wav', '.mp3', '.ogg'].includes(extension)) {
+        const fileBuffer = await fs.readFile(filePath);
+        content = fileBuffer.toString('base64');
+        isBinary = true;
+    } else {
+        content = await fs.readFile(filePath, "utf-8");
+    }
+
+    return { content, extension, name: sanitizedFilename, isBinary };
   } catch (error) {
     console.error(`Error reading file ${filename}:`, error);
     return null;
@@ -63,9 +73,17 @@ export async function getFileContentAction(
 export async function generateSummaryAction(input: {
   filename: string;
   fileContent: string;
+  isBinary?: boolean;
 }): Promise<{ summary: string } | { error: string }> {
   try {
-    const result = await summarizeFile(input);
+    // Avoid sending large binary content to the summarizer
+    if (input.isBinary) {
+      return { summary: "Cannot summarize binary files." };
+    }
+    const result = await summarizeFile({
+        filename: input.filename,
+        fileContent: input.fileContent,
+    });
     return result;
   } catch (error) {
     console.error("Error generating summary:", error);

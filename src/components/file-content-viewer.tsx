@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "./ui/scroll-area";
 import { DataVisualizer } from "./data-visualizer";
+import { Music } from "lucide-react";
 
 function CsvViewer({ content }: { content: string }) {
   const rows = content.split("\n").filter(Boolean);
@@ -53,33 +54,52 @@ function TxtViewer({ content }: { content: string }) {
   return <pre className="text-sm whitespace-pre-wrap">{content}</pre>;
 }
 
+function AudioPlayer({ fileContent }: { fileContent: FileContent }) {
+    const audioSrc = `data:audio/wav;base64,${fileContent.content}`;
+    return (
+        <div className="flex flex-col items-center justify-center h-full p-4">
+            <Music className="w-24 h-24 text-primary mb-4" />
+            <h3 className="text-lg font-medium mb-2">{fileContent.name}</h3>
+            <audio controls src={audioSrc} className="w-full max-w-md">
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+    );
+}
+
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
-  const hasPrettyView = fileContent.extension === ".json" || fileContent.extension === ".csv";
-  const hasVisualization = hasPrettyView;
+  const hasPrettyView = [".json", ".csv", ".txt"].includes(fileContent.extension);
+  const isDataVis = [".json", ".csv"].includes(fileContent.extension);
+  const isAudio = fileContent.extension === ".wav";
+  const hasVisualization = isDataVis || isAudio;
+
+  const defaultTab = hasVisualization ? "visualize" : (hasPrettyView ? "pretty" : "raw");
 
   return (
-    <Tabs defaultValue={hasVisualization ? "visualize" : (hasPrettyView ? "pretty" : "raw")} className="flex flex-col h-full">
-      <TabsList className={`grid w-full ${hasVisualization ? "grid-cols-3" : "grid-cols-2"} mb-4`}>
+    <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
+      <TabsList className={`grid w-full ${hasVisualization && hasPrettyView ? "grid-cols-3" : "grid-cols-2"} mb-4`}>
         {hasVisualization && <TabsTrigger value="visualize">Visualize</TabsTrigger>}
-        {hasPrettyView ? (
+        {hasPrettyView && (
            <TabsTrigger value="pretty">Pretty</TabsTrigger>
-        ) : <div />}
+        )}
         <TabsTrigger value="raw">Raw</TabsTrigger>
       </TabsList>
        {hasVisualization && (
         <TabsContent value="visualize" className="flex-grow h-0">
-          <DataVisualizer fileContent={fileContent} />
+          {isDataVis && <DataVisualizer fileContent={fileContent} />}
+          {isAudio && <AudioPlayer fileContent={fileContent} />}
         </TabsContent>
       )}
       {hasPrettyView && (
          <TabsContent value="pretty" className="flex-grow h-0">
           {fileContent.extension === ".csv" && <CsvViewer content={fileContent.content} />}
           {fileContent.extension === ".json" && <JsonViewer content={fileContent.content} />}
+          {fileContent.extension === ".txt" && <TxtViewer content={fileContent.content} />}
         </TabsContent>
       )}
       <TabsContent value="raw" className="flex-grow h-0">
-        <TxtViewer content={fileContent.content} />
+        <TxtViewer content={fileContent.isBinary ? "Binary content not displayed." : fileContent.content} />
       </TabsContent>
     </Tabs>
   );

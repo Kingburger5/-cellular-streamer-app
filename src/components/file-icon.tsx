@@ -1,4 +1,4 @@
-import { File, FileJson, FileText, Table } from "lucide-react";
+import { File, FileJson, FileText, Table, Music } from "lucide-react";
 import type { ComponentProps } from "react";
 
 interface FileIconProps extends ComponentProps<"svg"> {
@@ -15,6 +15,8 @@ export function FileIcon({ filename, ...props }: FileIconProps) {
       return <Table {...props} />;
     case ".txt":
       return <FileText {...props} />;
+    case ".wav":
+      return <Music {...props} />;
     default:
       return <File {...props} />;
   }

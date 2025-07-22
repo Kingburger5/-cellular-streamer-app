@@ -74,6 +74,7 @@ export function MainView({ initialFiles }: MainViewProps) {
       const summaryResult = await generateSummaryAction({
         filename: contentResult.name,
         fileContent: contentResult.content,
+        isBinary: contentResult.isBinary
       });
 
       if ("error" in summaryResult) {
