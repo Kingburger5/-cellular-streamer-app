@@ -28,6 +28,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { FormattedDate } from "./formatted-date";
+
 
 interface FileListProps {
   files: UploadedFile[];
@@ -40,18 +42,6 @@ interface FileListProps {
 }
 
 export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete, onDeleteFile }: FileListProps) {
-
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true 
-    });
-  }
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
@@ -89,7 +79,7 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
                   <span className="truncate flex-1 text-left">{file.name.substring(file.name.indexOf('-') + 1)}</span>
                 </div>
                 <div className="text-xs text-muted-foreground w-full mt-1 flex justify-between">
-                    <span>{formatDate(file.uploadDate)}</span>
+                    <FormattedDate date={file.uploadDate} />
                     <span>{formatBytes(file.size)}</span>
                 </div>
               </SidebarMenuButton>
