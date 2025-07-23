@@ -1,177 +1,192 @@
-#define TINY_GSM_MODEM_SIM7600
-#define TINY_GSM_RX_BUFFER 1024
+// Defines the serial port for the SIM7600 module
+#define SerialAT Serial1
 
-#include <Arduino.h>
+// Defines the serial baud rate for the SIM7600 module
+#define TINY_GSM_MODEM_SIM7600
+#define TINY_GSM_USE_GPRS true
+#define TINY_GSM_USE_SSL true
+
+// Required libraries
+#include <TinyGsmClient.h>
 #include <SPI.h>
 #include <SD.h>
-#include <TinyGsmClient.h>
-
-// Pin definitions for UART communication with the modem
-#define UART_BAUD   115200
-#define PIN_TX      17
-#define PIN_RX      16
-
-// Pin definitions for the SD Card
-#define SD_MISO     13
-#define SD_MOSI     12
-#define SD_SCLK     14
-#define SD_CS       5
 
 // Server details
 const char server[] = "6000-firebase-studio-1753223410587.cluster-73qgvk7hjjadkrjeyexca5ivva.cloudworkstations.dev";
 const char resource[] = "/api/upload";
-const int  port = 443;
+const int port = 443;
 
-// APN details for your network provider
-const char apn[] = "internet";
+// APN details for your mobile network provider
+const char apn[] = "internet"; 
 const char gprsUser[] = "";
 const char gprsPass[] = "";
 
-#define SerialMon Serial
-#define SerialAT Serial1
+// Pins for UART communication with the SIM7600 module
+#define UART_TX 2
+#define UART_RX 4
 
-// TinyGSM modem and client
+// Pin for the SD card chip select
+#define SD_CS 5
+
+// Global objects
 TinyGsm modem(SerialAT);
-TinyGsmClientSecure client(modem, 0);
-
-
-// File system
-File root;
-
-// Constants
-const size_t CHUNK_SIZE = 4096; // 4KB chunks
+TinyGsmClientSecure client(modem);
 
 void setup() {
-    SerialMon.begin(115200);
+    // Start serial communication for debugging
+    Serial.begin(115200);
     delay(10);
 
-    SerialMon.println(F("? Booting..."));
+    // Start serial communication with the SIM7600 module
+    SerialAT.begin(115200, SERIAL_8N1, UART_RX, UART_TX);
+    delay(6000);
 
-    // Initialize SD card
-    SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
-    if (!SD.begin(SD_CS)) {
-        SerialMon.println(F("! SD Card initialization failed!"));
-        while (1);
-    }
-    SerialMon.println(F("? SD card ready."));
-
-    // Initialize Modem
-    SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
-    
-    SerialMon.println(F("? Initializing modem..."));
+    Serial.println("? Initializing modem...");
     if (!modem.init()) {
-        SerialMon.println(F("! Failed to initialize modem."));
-        return;
+        Serial.println("? Failed to initialize modem. Halting.");
+        while (true);
     }
     
-    // Set to 4G/LTE mode
-    modem.sendAT(F("+CNMP=38")); // 38 for LTE only
-    modem.waitResponse();
-    
-    modem.sendAT(F("+CFUN=1")); // Full functionality
-    modem.waitResponse();
-    
-    String modemInfo = modem.getModemInfo();
-    SerialMon.print(F("? Modem Info: "));
-    SerialMon.println(modemInfo);
+    // Set modem to full functionality
+    modem.sendAT(F("+CFUN=1"));
+    if (modem.waitResponse(10000L) != 1) {
+        Serial.println(F("? CFUN command failed"));
+    }
 
-    // Connect to GPRS
-    SerialMon.print(F("? Connecting to APN: "));
-    SerialMon.println(apn);
+    // Set modem to LTE-only mode for 4G
+    modem.sendAT(F("+CNMP=38"));
+    if (modem.waitResponse(10000L) != 1) {
+        Serial.println(F("? CNMP command failed"));
+    }
+
+    Serial.print("? Waiting for network...");
+    if (!modem.waitForNetwork()) {
+        Serial.println(" fail");
+        delay(10000);
+        return;
+    }
+    Serial.println(" OK");
+
+    Serial.print("? Connecting to APN: ");
+    Serial.print(apn);
     if (!modem.gprsConnect(apn, gprsUser, gprsPass)) {
-        SerialMon.println(F("! GPRS connection failed."));
+        Serial.println(" fail");
+        delay(10000);
         return;
     }
+    Serial.println(" OK");
 
-    SerialMon.println(F("? GPRS connected."));
-    
-    root = SD.open("/");
-    uploadFile(root);
+    // Initialize the SD card
+    Serial.print(F("? Initializing SD card..."));
+    if (!SD.begin(SD_CS)) {
+        Serial.println(F(" failed!"));
+        while (true);
+    }
+    Serial.println(F(" OK"));
+
+    // The file to upload
+    const char* filename = "/sigma2.wav";
+    uploadFile(filename);
 }
 
 void loop() {
-    // Everything is done in setup for this sketch
+    // Everything is done in setup, so the loop is empty.
 }
 
-void uploadFile(File dir) {
-    while (true) {
-        File entry = dir.openNextFile();
-        if (!entry) {
-            // no more files
-            break;
-        }
+void uploadFile(const char *filename) {
+    File file = SD.open(filename, FILE_READ);
+    if (!file) {
+        Serial.println(F("? Failed to open file for reading"));
+        return;
+    }
 
-        if (entry.isDirectory()) {
-            // Skip directories
-            entry.close();
+    size_t fileSize = file.size();
+    Serial.print(F("? Preparing to upload "));
+    Serial.print(filename);
+    Serial.print(F(" ("));
+    Serial.print(fileSize);
+    Serial.println(F(" bytes)"));
+
+    const size_t chunkSize = 1024 * 10; // 10KB chunks
+    size_t offset = 0;
+
+    while (offset < fileSize) {
+        Serial.print(F("  Connecting to server... "));
+        if (!client.connect(server, port)) {
+            Serial.println(F("failed. Retrying..."));
+            delay(5000);
             continue;
         }
+        Serial.println("OK");
 
-        const char* filename = entry.name();
-        size_t totalSize = entry.size();
-        SerialMon.printf("? Preparing to upload %s (%d bytes)\n", filename, totalSize);
+        size_t currentChunkSize = min(chunkSize, fileSize - offset);
+
+        // Construct HTTP POST request
+        String headers = "POST " + String(resource) + " HTTP/1.1\r\n";
+        headers += "Host: " + String(server) + "\r\n";
+        headers += "Connection: close\r\n";
+        headers += "Content-Type: application/octet-stream\r\n";
+        headers += "X-Filename: " + String(filename).substring(1) + "\r\n";
+        headers += "X-Chunk-Offset: " + String(offset) + "\r\n";
+        headers += "X-Chunk-Size: " + String(currentChunkSize) + "\r\n";
+        headers += "X-Total-Size: " + String(fileSize) + "\r\n";
+        headers += "Content-Length: " + String(currentChunkSize) + "\r\n";
+        headers += "\r\n";
         
-        size_t offset = 0;
-        while (offset < totalSize) {
-            size_t chunkSize = totalSize - offset > CHUNK_SIZE ? CHUNK_SIZE : totalSize - offset;
+        Serial.print(F("  Sending chunk at offset "));
+        Serial.print(offset);
+        Serial.print(" (");
+        Serial.print(currentChunkSize);
+        Serial.println(" bytes)");
 
-            SerialMon.printf("  > Uploading chunk at offset %d (%d bytes)...\n", offset, chunkSize);
+        // Send headers
+        client.print(headers);
+        
+        // Send file data
+        uint8_t buffer[256];
+        size_t bytesSent = 0;
+        file.seek(offset);
+
+        while (bytesSent < currentChunkSize) {
+            size_t toRead = min(sizeof(buffer), currentChunkSize - bytesSent);
+            size_t bytesRead = file.read(buffer, toRead);
+            if (bytesRead == 0) break;
             
-            // Establish secure connection for each chunk
-            if (!client.connect(server, port)) {
-                SerialMon.println("! Connection failed.");
-                entry.close();
-                return; // Or handle retry
+            size_t written = client.write(buffer, bytesRead);
+            if (written != bytesRead) {
+                Serial.println(F("? Failed to write to client."));
+                break;
             }
-            SerialMon.println("  > Connected to server.");
-
-            // Construct and send HTTP headers
-            client.printf("POST %s HTTP/1.1\r\n", resource);
-            client.printf("Host: %s\r\n", server);
-            client.println("Connection: close");
-            client.printf("Content-Length: %d\r\n", chunkSize);
-            client.printf("X-Filename: %s\r\n", filename);
-            client.printf("X-Total-Size: %d\r\n", totalSize);
-            client.printf("X-Chunk-Offset: %d\r\n", offset);
-            client.printf("X-Chunk-Size: %d\r\n", chunkSize);
-            client.println(); // End of headers
-
-            // Send the file chunk
-            size_t bytesSent = 0;
-            char buffer[256];
-            entry.seek(offset); // Go to the correct position in the file
-            size_t toSend = chunkSize;
-            while(toSend > 0) {
-                size_t bytesRead = entry.read((uint8_t*)buffer, min(toSend, sizeof(buffer)));
-                if(bytesRead == 0) break; // End of file chunk
-                client.write((const uint8_t*)buffer, bytesRead);
-                bytesSent += bytesRead;
-                toSend -= bytesRead;
-            }
-
-            SerialMon.printf("  > Sent %d bytes.\n", bytesSent);
-            
-            // Wait for server response
-            unsigned long timeout = millis();
-            while (client.connected() && !client.available() && millis() - timeout < 30000L) {
-                delay(100);
-            }
-
-            if (client.available()) {
-                String line = client.readStringUntil('\n');
-                SerialMon.printf("  < Server Response: %s\n", line.c_str());
-                // You can add more logic here to parse the response if needed
-            } else {
-                SerialMon.println("  < No response from server.");
-            }
-            
-            client.stop();
-            SerialMon.println("  > Connection closed.");
-
-            offset += chunkSize;
+            bytesSent += bytesRead;
         }
 
-        SerialMon.printf("? Finished uploading %s\n", filename);
-        entry.close();
+        // Wait for response from server
+        unsigned long timeout = millis();
+        while (client.connected() && !client.available() && millis() - timeout < 30000L) {
+            delay(100);
+        }
+
+        if (client.available()) {
+            String line = client.readStringUntil('\n');
+            if (line.indexOf("200 OK") != -1) {
+                Serial.println(F("  Chunk uploaded successfully."));
+                offset += currentChunkSize;
+            } else {
+                 Serial.print(F("  Server returned an error: "));
+                 Serial.println(line);
+                 while(client.available()) {
+                    Serial.write(client.read());
+                 }
+            }
+        } else {
+            Serial.println(F("  No response from server."));
+        }
+        
+        client.stop();
+        Serial.println(F("  Connection closed."));
+        delay(1000); // Small delay between chunks
     }
+
+    file.close();
+    Serial.println(F("? File upload complete."));
 }
