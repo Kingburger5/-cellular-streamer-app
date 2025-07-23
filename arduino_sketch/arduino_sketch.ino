@@ -1,355 +1,408 @@
-// Define modem type
-#define TINY_GSM_MODEM_SIM7600
-// Set serial for debug prints
-#define SerialMon Serial
-// Set serial for AT commands (to the modem)
-#define XCOM Serial1
+// =================================================================
+// Configuration
+// =================================================================
 
-#include <Arduino.h>
+#define TINY_GSM_MODEM_SIM7600
+#define TINY_GSM_DEBUG Serial // Enable debug prints
+
+// Modem pins
+#define MODEM_TX 17
+#define MODEM_RX 16
+#define MODEM_BAUD 115200
+
+// SD Card
+#define SD_CS 5
+#define CHUNK_SIZE 4096 // 4KB chunks
+
+// Server details
+const char server[] = "6000-firebase-studio-1753223410587.cluster-73qgvk7hjjadkrjeyexca5ivva.cloudworkstations.dev";
+const char endpoint[] = "/api/upload";
+const char apn[] = "internet"; // Use "internet" for One NZ
+
+// =================================================================
+// Includes and Global Objects
+// =================================================================
+
 #include <HardwareSerial.h>
+#include <TinyGsmClient.h>
 #include <SD.h>
 #include <SPI.h>
 
-// Modem connection details
-#define MODEM_BAUD 115200
-#define MODEM_RX 16
-#define MODEM_TX 17
+HardwareSerial XCOM(1); // Use UART1 for communication with the modem
+TinyGsm modem(XCOM);
 
-// SD card pin
-#define SD_CS 5
+// Forward declarations to solve 'not declared in this scope' errors
+bool sendATCommand(const char* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker);
+bool sendATCommand(const __FlashStringHelper* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker);
 
-// Upload settings
-const char apn[] = "internet";
-const char server[] = "6000-firebase-studio-1753223410587.cluster-73qgvk7hjjadkrjeyexca5ivva.cloudworkstations.dev";
-const char endpoint[] = "/api/upload";
-const int port = 443;
-#define CHUNK_SIZE 4096
 
-// Forward declarations for helper functions to prevent compilation errors
-bool sendATCommand(const char* cmd, unsigned long timeout, const char* expect, const char* expect2 = nullptr, const char* expect3 = nullptr);
-bool sendATCommand(const __FlashStringHelper* cmd, unsigned long timeout, const char* expect, const char* expect2 = nullptr, const char* expect3 = nullptr);
-bool sendATCommand(const char* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker = "\r\n");
-bool sendATCommand(const __FlashStringHelper* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker = "\r\n");
-
-// Enum for network registration status
-enum RegStatus {
-  NOT_REGISTERED = 0,
-  REGISTERED_HOME = 1,
-  SEARCHING = 2,
-  REGISTRATION_DENIED = 3,
-  UNKNOWN = 4,
-  REGISTERED_ROAMING = 5
-};
+// =================================================================
+// Main Setup and Loop
+// =================================================================
 
 void setup() {
-  SerialMon.begin(115200);
+  Serial.begin(115200);
   delay(1000);
+  Serial.println(F("? Booting..."));
 
-  SerialMon.println(F("? Booting..."));
-
+  // --- Initialize SD Card ---
   if (!SD.begin(SD_CS)) {
-    SerialMon.println(F("? SD card failed."));
+    Serial.println(F("? SD card failed. Halting."));
     while (true);
   }
-  SerialMon.println(F("? SD card ready."));
+  Serial.println(F("? SD card ready."));
 
-  SerialMon.println(F("? Initializing modem..."));
+  // --- Initialize Modem ---
   XCOM.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
-  delay(3000);
-
-  // Wait for modem to be ready
-  SerialMon.println(F("? Waiting for modem to be ready..."));
-  while (!sendATCommand(F("AT"), 1000, "OK")) {
-    delay(1000);
-  }
-  SerialMon.println(F("? Modem is ready."));
-
-  printModemStatus();
-
-  // Wait for network registration
-  SerialMon.println(F("? Waiting for network registration..."));
-  while (getRegistrationStatus() != REGISTERED_HOME) {
-    SerialMon.println("? Network registration status: " + String((int)getRegistrationStatus()));
-    delay(2000);
-  }
-  SerialMon.println(F("? Registered on network."));
-
-  if (!manualGprsConnect()) {
-    SerialMon.println(F("? GPRS connection failed. Halting."));
-    while (true);
+  Serial.println(F("? Initializing modem..."));
+  
+  // Wait for modem to become responsive
+  Serial.println(F("? Waiting for modem to be ready..."));
+  unsigned long start = millis();
+  while (millis() - start < 10000) {
+    if (modem.testAT()) {
+      break;
+    }
+    delay(500);
   }
 
-  // Upload your file here
+  if (!modem.isGprsConnected()) {
+    Serial.println(F("? Modem is ready."));
+    printModemStatus();
+
+    // --- Wait for Network Registration ---
+    Serial.println(F("? Waiting for network registration..."));
+    RegStatus reg_status = modem.getRegistrationStatus();
+    start = millis();
+    while (reg_status != REG_OK_HOME && reg_status != REG_OK_ROAMING && (millis() - start < 60000L)) {
+      delay(1000);
+      reg_status = modem.getRegistrationStatus();
+      Serial.println("Network registration status: " + String((int)reg_status));
+    }
+    
+    if (reg_status == REG_OK_HOME || reg_status == REG_OK_ROAMING) {
+      Serial.println(F("? Registered on network."));
+    } else {
+      Serial.println(F("? Failed to register on network. Halting."));
+      while (true);
+    }
+
+    // --- Connect to GPRS ---
+    if (manualGprsConnect()) {
+        String ip;
+        sendATCommand(F("AT+CGPADDR=1"), 5000, "+CGPADDR:", ip, "OK");
+        if (ip.length() > 0) {
+            ip.remove(0, ip.indexOf(':') + 2);
+            Serial.println("? GPRS Connected. IP: " + ip);
+        }
+    } else {
+      Serial.println(F("? GPRS connection failed. Halting."));
+      while (true);
+    }
+  } else {
+    Serial.println(F("? Already connected."));
+  }
+
+  // --- Upload File ---
   uploadFile("/sigma2.wav");
 }
 
 void loop() {
-  // Nothing here
+  // Keep the device awake, but do nothing in the loop
+  delay(1000);
 }
 
-void printModemStatus() {
-  String res;
-  SerialMon.println(F("--- Modem Status ---"));
-  if (sendATCommand(F("AT+GSN"), 1000, "OK", res)) {
-    res.trim();
-    SerialMon.println("IMEI: " + res);
-  }
-  if (sendATCommand(F("AT+CSQ"), 1000, "OK", res)) {
-    int rssi = res.substring(res.indexOf(':') + 2, res.indexOf(',')).toInt();
-    SerialMon.println("Signal Quality: " + String(rssi));
-  }
-  if (sendATCommand(F("AT+CPIN?"), 1000, "READY", res)) {
-    SerialMon.println("SIM Status: 1");
-  } else {
-    SerialMon.println("SIM Status: 0");
-  }
-  if (sendATCommand(F("AT+CCID"), 1000, "OK", res)) {
-    res.trim();
-    SerialMon.println("CCID: " + res);
-  }
-  if (sendATCommand(F("AT+COPS?"), 1000, "OK", res)) {
-    int first_quote = res.indexOf('"') + 1;
-    int second_quote = res.indexOf('"', first_quote);
-    String operatorName = res.substring(first_quote, second_quote);
-    SerialMon.println("Operator: " + operatorName);
-  }
-  SerialMon.println(F("--------------------"));
-}
+// =================================================================
+// Core Functions
+// =================================================================
 
-RegStatus getRegistrationStatus() {
-  String res;
-  if (sendATCommand(F("AT+CREG?"), 1000, "OK", res)) {
-    int status = res.substring(res.lastIndexOf(',') + 1).toInt();
-    return (RegStatus)status;
-  }
-  return UNKNOWN;
-}
-
+/**
+ * Manually connects to GPRS using AT commands.
+ */
 bool manualGprsConnect() {
-  SerialMon.println(F("? Connecting to GPRS..."));
-  if (!sendATCommand(F("AT+CGDCONT=1,\"IP\",\"internet\""), 10000, "OK")) return false;
-  if (!sendATCommand(F("AT+CGACT=1,1"), 20000, "OK")) {
-    SerialMon.println(F("? Failed to activate GPRS context."));
-    return false;
-  }
-  String ip_addr;
-  if (sendATCommand(F("AT+CGPADDR=1"), 10000, "OK", ip_addr) && ip_addr.indexOf("1,") != -1) {
-    ip_addr = ip_addr.substring(ip_addr.indexOf("1,") + 2);
-    ip_addr.trim();
-    SerialMon.println("? GPRS Connected. IP: " + ip_addr);
-    return true;
-  }
-  return false;
-}
-
-bool openHttpsSession() {
-  if (!sendATCommand(F("AT+CHTTPSSTART"), 20000, "OK")) return false;
-
-  String cmd = "AT+CHTTPSOPSE=\"";
-  cmd += server;
-  cmd += "\",";
-  cmd += port;
-  
-  if (!sendATCommand(cmd.c_str(), 30000, "+CHTTPSOPSE: 0")) {
-      SerialMon.println(F("? Failed to open HTTPS session."));
-      closeHttpsSession();
-      return false;
-  }
-
-  cmd = "AT+CHTTPSPARA=\"URL\",\"";
-  cmd += endpoint;
-  cmd += "\"";
-  if (!sendATCommand(cmd.c_str(), 20000, "OK")) {
-    SerialMon.println(F("? Failed to set URL parameter."));
-    closeHttpsSession();
-    return false;
-  }
-  
+  Serial.println(F("? Connecting to GPRS..."));
+  String res;
+  if (!sendATCommand(F("AT+CGDCONT=1,\"IP\",\"internet\""), 5000, "OK", res, nullptr)) return false;
+  if (!sendATCommand(F("AT+CGACT=1,1"), 5000, "OK", res, nullptr)) return false;
   return true;
 }
 
-bool setRequestHeaders(const char* filename, size_t offset, size_t chunkSize, size_t totalSize) {
-    String cmd;
+/**
+ * Opens an HTTPS session with the server.
+ */
+bool openHttpsSession() {
+  String res;
+  // Initialize the service
+  if (!sendATCommand(F("AT+CHTTPSSTART"), 20000, "+CHTTPSSTART: 0", res, nullptr)) {
+      Serial.println(F("? Failed to start HTTPS service."));
+      return false;
+  }
+  
+  // Set the URL parameter BEFORE opening the session
+  String url_cmd = "AT+CHTTPSPARA=\"URL\",\"" + String(endpoint) + "\"";
+  if (!sendATCommand(url_cmd.c_str(), 20000, "OK", res, nullptr)) {
+      Serial.println(F("? Failed to set URL parameter."));
+      return false;
+  }
+
+  // Open the session now that the URL is set
+  String open_cmd = "AT+CHTTPSOPSE=\"" + String(server) + "\",443";
+  if (!sendATCommand(open_cmd.c_str(), 30000, "+CHTTPSOPSE: 0", res, nullptr)) {
+      Serial.println(F("? Failed to open HTTPS session."));
+      return false;
+  }
+
+  return true;
+}
+
+
+/**
+ * Sets the required HTTP headers for the file chunk upload.
+ */
+bool setRequestHeaders(const char* filename, size_t totalSize, size_t offset, size_t chunkSize) {
+    String res, cmd;
     
     cmd = "AT+CHTTPSPARA=\"USERDATA\",\"Content-Type: application/octet-stream\"";
-    if (!sendATCommand(cmd.c_str(), 5000, "OK")) return false;
-
-    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Filename: ";
-    cmd += filename;
-    cmd += "\"";
-    if (!sendATCommand(cmd.c_str(), 5000, "OK")) return false;
-
-    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Chunk-Offset: ";
-    cmd += offset;
-    cmd += "\"";
-    if (!sendATCommand(cmd.c_str(), 5000, "OK")) return false;
-
-    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Chunk-Size: ";
-    cmd += chunkSize;
-    cmd += "\"";
-    if (!sendATCommand(cmd.c_str(), 5000, "OK")) return false;
-
-    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Total-Size: ";
-    cmd += totalSize;
-    cmd += "\"";
-    if (!sendATCommand(cmd.c_str(), 5000, "OK")) return false;
+    if (!sendATCommand(cmd.c_str(), 5000, "OK", res, nullptr)) return false;
     
-    cmd = "AT+CHTTPSPARA=\"CONTENT-LENGTH\",";
-    cmd += chunkSize;
-    if (!sendATCommand(cmd.c_str(), 5000, "OK")) return false;
+    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Filename: " + String(filename) + "\"";
+    if (!sendATCommand(cmd.c_str(), 5000, "OK", res, nullptr)) return false;
+    
+    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Chunk-Offset: " + String(offset) + "\"";
+    if (!sendATCommand(cmd.c_str(), 5000, "OK", res, nullptr)) return false;
 
+    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Chunk-Size: " + String(chunkSize) + "\"";
+    if (!sendATCommand(cmd.c_str(), 5000, "OK", res, nullptr)) return false;
+
+    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"X-Total-Size: " + String(totalSize) + "\"";
+    if (!sendATCommand(cmd.c_str(), 5000, "OK", res, nullptr)) return false;
+
+    cmd = "AT+CHTTPSPARA=\"USERDATA\",\"Content-Length: " + String(chunkSize) + "\"";
+    if (!sendATCommand(cmd.c_str(), 5000, "OK", res, nullptr)) return false;
+    
     return true;
 }
 
+
+/**
+ * Closes the HTTPS session gracefully.
+ */
 void closeHttpsSession() {
-    sendATCommand(F("AT+CHTTPSCLSE"), 5000, "OK");
-    sendATCommand(F("AT+CHTTPSSTOP"), 5000, "OK");
+  String res;
+  sendATCommand(F("AT+CHTTPSCLSE"), 5000, "+CHTTPSCLSE: 0", res, nullptr);
+  sendATCommand(F("AT+CHTTPSSTOP"), 5000, "+CHTTPSSTOP: 0", res, nullptr);
 }
 
+/**
+ * Uploads a file from the SD card in chunks.
+ */
 void uploadFile(const char* filename) {
   File file = SD.open(filename);
   if (!file) {
-    SerialMon.println("? Failed to open file.");
+    Serial.println(F("? Failed to open file for upload."));
     return;
   }
 
   size_t totalSize = file.size();
-  SerialMon.println("? Preparing to upload " + String(filename) + " (" + String(totalSize) + " bytes)");
+  Serial.printf("? Preparing to upload %s (%d bytes)\n", filename, totalSize);
 
-  size_t offset = 0;
-  while (offset < totalSize) {
-    bool chunk_success = false;
-    for (int attempt = 1; attempt <= 3; attempt++) {
-      SerialMon.println("  Attempt " + String(attempt) + "/3 to send chunk at offset " + String(offset) + "...");
-      if (sendChunk(file, offset, totalSize)) {
-        chunk_success = true;
+  for (size_t offset = 0; offset < totalSize; offset += CHUNK_SIZE) {
+    size_t chunkSize = min((size_t)CHUNK_SIZE, totalSize - offset);
+    bool chunkSuccess = false;
+    for (int attempt = 1; attempt <= 3; ++attempt) {
+      Serial.printf("  Attempt %d/3 to send chunk at offset %d...\n", attempt, offset);
+      if (sendChunk(file, offset, chunkSize)) {
+        chunkSuccess = true;
         break;
       }
-      SerialMon.println("  Retrying chunk in 5 seconds...");
+      Serial.println(F("? Retrying chunk in 5 seconds..."));
       delay(5000);
     }
-    if (chunk_success) {
-      offset += CHUNK_SIZE;
-    } else {
-      SerialMon.println("? Failed to upload chunk after 3 attempts. Aborting.");
-      break;
+    if (!chunkSuccess) {
+      Serial.println(F("? Failed to upload chunk after 3 attempts. Aborting."));
+      file.close();
+      return;
     }
   }
 
-  if (offset >= totalSize) {
-    SerialMon.println(F("? File upload completed successfully."));
-  }
+  Serial.println(F("? File upload complete."));
   file.close();
 }
 
-bool sendChunk(File& file, size_t offset, size_t totalSize) {
-  if (!openHttpsSession()) {
-    return false;
-  }
-  
-  size_t chunkSize = min((size_t)CHUNK_SIZE, totalSize - offset);
-  if (!setRequestHeaders(file.name(), offset, chunkSize, totalSize)) {
-      SerialMon.println(F("? Failed to set request headers."));
-      closeHttpsSession();
-      return false;
-  }
 
-  String cmd = "AT+CHTTPSD=";
-  cmd += chunkSize;
-  cmd += ",60000"; // 60s timeout for download prompt
-  String response;
-  if (!sendATCommand(cmd.c_str(), 5000, "DOWNLOAD", response)) {
-    SerialMon.println(F("? Modem did not prompt for data."));
+/**
+ * Sends a single chunk of the file.
+ */
+bool sendChunk(File& file, size_t offset, size_t chunkSize) {
+    String response;
+
+    if (!openHttpsSession()) {
+        closeHttpsSession(); // Attempt cleanup
+        return false;
+    }
+
+    if (!setRequestHeaders(file.name(), file.size(), offset, chunkSize)) {
+        Serial.println(F("? Failed to set request headers."));
+        closeHttpsSession();
+        return false;
+    }
+
+    Serial.printf("? Uploading chunk at offset %d (%d bytes)...\n", offset, chunkSize);
+    
+    // Command to indicate we are about to send data
+    String send_cmd = "AT+HTTPSSEND=" + String(chunkSize);
+    if (!sendATCommand(send_cmd.c_str(), 5000, ">", response, nullptr)) {
+        Serial.println(F("? Failed to initiate data send."));
+        closeHttpsSession();
+        return false;
+    }
+    
+    // Read chunk from SD and send it directly
+    uint8_t buffer[256];
+    file.seek(offset);
+    for(size_t i = 0; i < chunkSize; i += sizeof(buffer)) {
+        size_t readBytes = file.read(buffer, min(sizeof(buffer), chunkSize - i));
+        XCOM.write(buffer, readBytes);
+    }
+
+    // Wait for the server's response after sending data
+    if (!sendATCommand((const char*)nullptr, 20000, "+HTTPSSEND: 0", response, "OK")) {
+        Serial.println("? Chunk upload failed. Server response:");
+        Serial.println(response);
+        closeHttpsSession();
+        return false;
+    }
+
+    Serial.println(F("? Chunk sent successfully."));
     closeHttpsSession();
-    return false;
-  }
-
-  // Send the file data
-  file.seek(offset);
-  uint8_t buffer[256];
-  size_t bytes_sent = 0;
-  while(bytes_sent < chunkSize) {
-      size_t to_read = min((size_t)sizeof(buffer), chunkSize - bytes_sent);
-      size_t bytes_read = file.read(buffer, to_read);
-      if (bytes_read == 0) break;
-      XCOM.write(buffer, bytes_read);
-      bytes_sent += bytes_read;
-  }
-  XCOM.flush();
-
-  // Wait for server response after data sent
-  if (!sendATCommand((const char*)nullptr, 60000, "+CHTTPS: 200")) {
-    SerialMon.println("? Chunk upload failed. Server response did not contain 200 OK.");
-    closeHttpsSession();
-    return false;
-  }
-  
-  SerialMon.println("? Chunk successfully uploaded.");
-  closeHttpsSession();
-  return true;
+    return true;
 }
 
+
 // =================================================================
-// Generic AT command helper function (with overloads)
+// Utility and Debug Functions
 // =================================================================
 
-bool sendATCommand(const char* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker) {
+/**
+ * A robust function to send an AT command and wait for an expected response.
+ * Handles reading the full response from the modem.
+ */
+bool sendATCommand(const char* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker = "OK") {
+    response = "";
     if (cmd) {
-        SerialMon.println("[AT SEND] " + String(cmd));
+        Serial.print(F("[AT SEND] "));
+        Serial.println(cmd);
         XCOM.println(cmd);
     }
     
-    response = "";
     unsigned long start = millis();
     while (millis() - start < timeout) {
         while (XCOM.available()) {
             char c = XCOM.read();
             response += c;
         }
-        if (response.indexOf(expect) != -1) {
-            if (end_marker == nullptr || response.indexOf(end_marker) != -1) {
-                 SerialMon.print("[AT RECV] " + response);
-                 return true;
+        if (expect && response.indexOf(expect) != -1) {
+            // Also wait for the end marker if specified
+            if (end_marker) {
+                 if (response.indexOf(end_marker) != -1) {
+                    break;
+                 }
+            } else {
+                break;
             }
         }
+         // If we don't expect anything, just wait for OK or ERROR
+        if (!expect && end_marker && response.indexOf(end_marker) !=-1) {
+            break;
+        }
     }
-    SerialMon.println("[AT RECV TIMEOUT] " + response);
-    return false;
+
+    Serial.print(F("[AT RECV] "));
+    if(response.length() > 0) {
+      Serial.println(response);
+    } else {
+      Serial.println(F("TIMEOUT"));
+    }
+    
+    if (expect) {
+        return response.indexOf(expect) != -1;
+    }
+    return response.indexOf(end_marker) != -1;
 }
 
-bool sendATCommand(const char* cmd, unsigned long timeout, const char* expect, const char* expect2, const char* expect3) {
-    String response;
+// Overload for Flash strings to save memory
+bool sendATCommand(const __FlashStringHelper* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker = "OK") {
+    response = "";
     if (cmd) {
-        SerialMon.println("[AT SEND] " + String(cmd));
+        Serial.print(F("[AT SEND] "));
+        Serial.println(cmd);
         XCOM.println(cmd);
     }
+    
     unsigned long start = millis();
     while (millis() - start < timeout) {
-        if (XCOM.available()) {
-            response += XCOM.readString();
+        while (XCOM.available()) {
+            char c = XCOM.read();
+            response += c;
         }
-        if (response.indexOf(expect) != -1) {
-             SerialMon.print("[AT RECV] " + response);
-            return true;
+        if (expect && response.indexOf(expect) != -1) {
+            if (end_marker) {
+                 if (response.indexOf(end_marker) != -1) {
+                    break;
+                 }
+            } else {
+                break;
+            }
         }
-        if (expect2 && response.indexOf(expect2) != -1) {
-             SerialMon.print("[AT RECV] " + response);
-            return true;
-        }
-        if (expect3 && response.indexOf(expect3) != -1) {
-             SerialMon.print("[AT RECV] " + response);
-            return true;
+        if (!expect && end_marker && response.indexOf(end_marker) !=-1) {
+            break;
         }
     }
-    SerialMon.println("[AT RECV TIMEOUT] " + response);
-    return false;
+    
+    Serial.print(F("[AT RECV] "));
+    if(response.length() > 0) {
+      Serial.println(response);
+    } else {
+      Serial.println(F("TIMEOUT"));
+    }
+    
+    if (expect) {
+        return response.indexOf(expect) != -1;
+    }
+    return response.indexOf(end_marker) != -1;
 }
 
-// Overload for Flash-based strings
-bool sendATCommand(const __FlashStringHelper* cmd, unsigned long timeout, const char* expect, String& response, const char* end_marker) {
-    return sendATCommand((const char*)cmd, timeout, expect, response, end_marker);
-}
 
-bool sendATCommand(const __FlashStringHelper* cmd, unsigned long timeout, const char* expect, const char* expect2, const char* expect3) {
-    return sendATCommand((const char*)cmd, timeout, expect, expect2, expect3);
+/**
+ * Prints key modem status details to the Serial monitor.
+ */
+void printModemStatus() {
+  String res;
+  Serial.println(F("--- Modem Status ---"));
+  
+  sendATCommand(F("AT+GSN"), 1000, "OK", res, nullptr);
+  res.trim();
+  Serial.println("IMEI: " + res.substring(0, res.indexOf("OK")));
+
+  sendATCommand(F("AT+CSQ"), 1000, "OK", res, nullptr);
+  res.trim();
+  res.remove(0, res.indexOf(':') + 2);
+  Serial.println("Signal Quality: " + res.substring(0, res.indexOf(',')));
+
+  sendATCommand(F("AT+CPIN?"), 1000, "OK", res, nullptr);
+  res.trim();
+  res.remove(0, res.indexOf(':') + 2);
+  Serial.println("SIM Status: " + res.substring(0, res.indexOf('\r')));
+  
+  sendATCommand(F("AT+CCID"), 1000, "OK", res, nullptr);
+  res.trim();
+  res.remove(0, res.indexOf(':') + 2);
+  Serial.println("CCID: " + res.substring(0, res.indexOf('\r')));
+
+  sendATCommand(F("AT+COPS?"), 1000, "OK", res, nullptr);
+  res.trim();
+  res.remove(0, res.indexOf('"') + 1);
+  Serial.println("Operator: " + res.substring(0, res.lastIndexOf('"')));
+  
+  Serial.println(F("--------------------"));
 }
