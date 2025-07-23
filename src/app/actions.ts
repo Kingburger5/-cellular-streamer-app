@@ -102,7 +102,7 @@ export async function getFileContentAction(
     let isBinary = false;
     let rawMetadata: string | null = null;
 
-    if (['.wav', '.mp3', 'ogg'].includes(extension)) {
+    if (['.wav', '.mp3', '.ogg'].includes(extension)) {
         isBinary = true;
         content = `data:audio/wav;base64,${fileBuffer.toString('base64')}`;
         rawMetadata = findReadableStrings(fileBuffer);
