@@ -5,11 +5,37 @@ import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DataVisualizer } from "./data-visualizer";
 import { ScrollArea } from "./ui/scroll-area";
+import { WaveFileViewer } from "./wave-file-viewer";
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
   const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
   const isAudio = ['.wav', '.mp3', 'ogg'].includes(fileContent.extension);
 
+  if (isAudio) {
+      if (hasVisualization) {
+        return <WaveFileViewer fileContent={fileContent} />;
+      }
+      
+      // Fallback for audio files without visualizable metadata
+      return (
+         <Card className="h-full">
+            <CardHeader>
+                <CardTitle>Audio File</CardTitle>
+                <CardDescription>No parsable GUANO metadata was found in this file.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex flex-col items-center justify-center p-4">
+                    <h3 className="text-lg font-medium mb-2">{fileContent.name.substring(fileContent.name.indexOf('-') + 1)}</h3>
+                    <audio controls src={`data:audio/wav;base64,${fileContent.content}`} className="w-full max-w-md">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+            </CardContent>
+         </Card>
+      );
+  }
+
+  // Handle non-audio files that might have visualizable data (e.g. text/csv)
   if (hasVisualization) {
     return (
         <ScrollArea className="h-full">
@@ -17,9 +43,9 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
                 <DataVisualizer data={fileContent.extractedData} />
                  <Card>
                     <CardHeader>
-                        <CardTitle>Extracted Raw Metadata</CardTitle>
+                        <CardTitle>Raw File Content</CardTitle>
                         <CardDescription>
-                            The raw text block found in the binary file.
+                            The raw text content from the file used for visualization.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -32,27 +58,8 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
         </ScrollArea>
     )
   }
-
-  if (isAudio && fileContent.isBinary) {
-     return (
-       <Card className="h-full">
-        <CardHeader>
-            <CardTitle>Audio File</CardTitle>
-            <CardDescription>No parsable GUANO metadata was found in this file.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <div className="flex flex-col items-center justify-center p-4">
-                <h3 className="text-lg font-medium mb-2">{fileContent.name.substring(fileContent.name.indexOf('-') + 1)}</h3>
-                <audio controls src={`data:audio/wav;base64,${fileContent.content}`} className="w-full max-w-md">
-                    Your browser does not support the audio element.
-                </audio>
-            </div>
-        </CardContent>
-     </Card>
-     )
-  }
   
-  // Fallback for non-audio files or files without metadata
+  // Fallback for non-audio, non-visualizable files
   return (
      <Card className="h-full">
         <CardHeader>

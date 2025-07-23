@@ -50,12 +50,11 @@ function findGuanoMetadata(buffer: Buffer): string | null {
   }
   
   // Search for the end of the metadata block, which is terminated by a newline.
-  // We'll search up to a reasonable limit from the header.
   const searchEnd = Math.min(headerIndex + 8192, buffer.length);
   let metadataEnd = -1;
 
+  // We are looking for the Line Feed character (0x0a)
   for (let i = headerIndex; i < searchEnd; i++) {
-    // End of line character (LF)
     if (buffer[i] === 0x0a) {
       metadataEnd = i;
       break;
@@ -63,12 +62,11 @@ function findGuanoMetadata(buffer: Buffer): string | null {
   }
 
   if (metadataEnd === -1) {
-    // If no terminator is found, we can't reliably extract the metadata.
     return null;
   }
 
   // Extract the metadata block and decode it as UTF-8.
-  // We trim any whitespace or non-printable characters from the result.
+  // The end position is exclusive for subarray.
   const metadataBlock = buffer.subarray(headerIndex, metadataEnd).toString('utf-8').trim();
   
   return metadataBlock;
