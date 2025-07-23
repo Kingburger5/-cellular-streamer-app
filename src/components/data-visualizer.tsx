@@ -5,12 +5,22 @@ import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
 import { FormattedDate } from './formatted-date';
 
-export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
+export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, isLoading: boolean }) {
   const apiKey = "AIzaSyCx-5VQB6xHfLbZsxeKDDEr71Vvr2k659A";
+
+  if (isLoading) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
+            <Loader className="w-12 h-12 mb-4 animate-spin" />
+            <h3 className="font-semibold">Analyzing Data...</h3>
+            <p className="text-sm">The AI is extracting structured data from the file.</p>
+        </div>
+    );
+  }
 
   if (!data || data.length === 0) {
     return (

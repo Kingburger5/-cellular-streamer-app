@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { FileContent } from "@/lib/types";
@@ -5,26 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileContentViewer } from "./file-content-viewer";
 import { Badge } from "./ui/badge";
-import { ServerCrash, FileSearch } from "lucide-react";
+import { ServerCrash, FileSearch, Loader } from "lucide-react";
 
 interface FileDisplayProps {
   fileContent: FileContent | null;
   isLoading: boolean;
+  isDataLoading: boolean;
   error: string | null;
 }
 
-export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps) {
+export function FileDisplay({ fileContent, isLoading, isDataLoading, error }: FileDisplayProps) {
   if (isLoading) {
     return (
-      <Card className="h-full flex flex-col">
-        <CardHeader>
-          <Skeleton className="h-8 w-3/4" />
-          <Skeleton className="h-4 w-1/4" />
-        </CardHeader>
-        <CardContent className="flex-grow">
-          <Skeleton className="h-full w-full" />
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
+        <Loader className="w-12 h-12 mb-4 animate-spin" />
+        <h3 className="font-semibold">Loading File...</h3>
+        <p className="text-sm">Please wait while the file content is being loaded.</p>
+      </div>
     );
   }
 
@@ -57,7 +55,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow h-0">
-          <FileContentViewer fileContent={fileContent} />
+          <FileContentViewer fileContent={fileContent} isDataLoading={isDataLoading} />
       </CardContent>
     </Card>
   );

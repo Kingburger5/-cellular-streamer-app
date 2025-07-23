@@ -4,9 +4,9 @@
 import type { FileContent } from "@/lib/types";
 import { WaveFileViewer } from "./wave-file-viewer";
 
-export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
+export function FileContentViewer({ fileContent, isDataLoading }: { fileContent: FileContent, isDataLoading: boolean }) {
   if (fileContent.isBinary) {
-     return <WaveFileViewer fileContent={fileContent} />;
+     return <WaveFileViewer fileContent={fileContent} isDataLoading={isDataLoading}/>;
   }
   
   // Fallback for non-audio text-based files like JSON, CSV, TXT

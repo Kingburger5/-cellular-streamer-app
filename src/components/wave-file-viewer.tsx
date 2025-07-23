@@ -7,20 +7,21 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { DataVisualizer } from './data-visualizer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
+export function WaveFileViewer({ fileContent, isDataLoading }: { fileContent: FileContent, isDataLoading: boolean }) {
     const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
-    const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
-    const defaultTab = hasVisualization ? "visualization" : "metadata";
+    const hasRawMetadata = !!fileContent.rawMetadata;
+    const hasData = !!fileContent.extractedData;
+    const defaultTab = (hasData || isDataLoading) ? "visualization" : "metadata";
 
     return (
         <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
             <TabsList className="shrink-0">
-                <TabsTrigger value="visualization" disabled={!hasVisualization}>Data Visualization</TabsTrigger>
+                <TabsTrigger value="visualization" disabled={!hasRawMetadata}>Data Visualization</TabsTrigger>
                 <TabsTrigger value="audio" disabled={!audioSrc}>Audio Playback</TabsTrigger>
                 <TabsTrigger value="metadata">Raw Metadata</TabsTrigger>
             </TabsList>
             <TabsContent value="visualization" className="flex-grow h-0">
-                 <DataVisualizer data={fileContent.extractedData} />
+                 <DataVisualizer data={fileContent.extractedData} isLoading={isDataLoading}/>
             </TabsContent>
             <TabsContent value="audio" className="flex-grow h-0">
                  <Card className="h-full">

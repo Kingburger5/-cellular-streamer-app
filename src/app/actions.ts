@@ -4,7 +4,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { extractData } from "@/ai/flows/extract-data-flow";
-import type { UploadedFile, FileContent } from "@/lib/types";
+import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 const UPLOAD_DIR = "/tmp/uploads";
 
@@ -100,36 +100,40 @@ export async function getFileContentAction(
     const fileBuffer = await fs.readFile(filePath);
     let content: string;
     let isBinary = false;
-    let extractedData = null;
     let rawMetadata: string | null = null;
 
     if (['.wav', '.mp3', 'ogg'].includes(extension)) {
         isBinary = true;
         content = `data:audio/wav;base64,${fileBuffer.toString('base64')}`;
         rawMetadata = findReadableStrings(fileBuffer);
-        
-        if (rawMetadata) {
-             const aiResult = await extractData({ fileContent: rawMetadata });
-             if (aiResult && aiResult.data.length > 0) {
-                 extractedData = aiResult.data;
-             }
-        }
-
     } else {
         content = fileBuffer.toString("utf-8");
         rawMetadata = content; // The whole file is the metadata
-        const aiResult = await extractData({ fileContent: rawMetadata });
-        if (aiResult && aiResult.data.length > 0) {
-            extractedData = aiResult.data;
-        }
     }
 
-    return { content, extension, name: sanitizedFilename, isBinary, extractedData, rawMetadata };
+    return { content, extension, name: sanitizedFilename, isBinary, rawMetadata, extractedData: null };
   } catch (error) {
     console.error(`Error reading file ${filename}:`, error);
     return null;
   }
 }
+
+export async function getExtractedDataAction(rawMetadata: string | null): Promise<DataPoint[] | null> {
+    if (!rawMetadata) {
+        return null;
+    }
+    try {
+        const aiResult = await extractData({ fileContent: rawMetadata });
+        if (aiResult && aiResult.data.length > 0) {
+            return aiResult.data;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error extracting data with AI:", error);
+        return null;
+    }
+}
+
 
 export async function deleteFileAction(
   filename: string
