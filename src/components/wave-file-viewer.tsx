@@ -22,7 +22,7 @@ function AudioPlayer({ fileContent }: { fileContent: FileContent }) {
 export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
     return (
         <ScrollArea className="h-full">
-            <div className="p-4 space-y-4">
+            <div className="p-1 space-y-4">
                 <Card>
                     <CardHeader>
                         <CardTitle>Audio Playback</CardTitle>
@@ -36,11 +36,13 @@ export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
                     <CardHeader>
                         <CardTitle>Extracted Metadata</CardTitle>
                     </CardHeader>
-                    <CardContent className="h-[45rem]">
-                        {fileContent.extractedData ? (
-                            <DataVisualizer data={fileContent.extractedData} />
+                    <CardContent className="h-auto">
+                        {fileContent.extractedData && fileContent.extractedData.length > 0 ? (
+                            <div className='h-[70vh]'>
+                               <DataVisualizer data={fileContent.extractedData} />
+                            </div>
                         ) : (
-                             <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
+                             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
                                 <FileWarning className="w-12 h-12 mb-4" />
                                 <h3 className="font-semibold">No Metadata Found</h3>
                                 <p className="text-sm">Could not extract any structured data from this file.</p>
