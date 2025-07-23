@@ -11,6 +11,9 @@ export interface DataPoint {
   longitude: number;
   temperature: number;
   flybys?: number;
+  sampleRate?: number;
+  minTriggerFreq?: number;
+  maxTriggerFreq?: number;
 }
 
 export interface FileContent {

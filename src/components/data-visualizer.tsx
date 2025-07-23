@@ -1,10 +1,12 @@
+
 "use client";
 
 import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning, AlertTriangle } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap } from 'lucide-react';
+import { formatBytes } from '@/lib/utils';
 
 export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
   const apiKey = "AIzaSyCx-5VQB6xHfLbZsxeKDDEr71Vvr2k659A";
@@ -25,15 +27,26 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
     time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   }));
 
+  const formatHz = (hz: number) => {
+    if (hz >= 1000) {
+      return `${(hz / 1000).toFixed(1)} kHz`;
+    }
+    return `${hz} Hz`;
+  }
+
   const avgTemperature = (data.reduce((acc, d) => acc + (d.temperature || 0), 0) / data.length).toFixed(1);
   const totalFlybys = data.reduce((acc, d) => acc + (d.flybys || 0), 0);
   const latestLocation = data.length > 0 ? data[data.length - 1] : null;
+  const sampleRate = data.length > 0 ? data[0].sampleRate : null;
+  const minFreq = data.length > 0 ? data[0].minTriggerFreq : null;
+  const maxFreq = data.length > 0 ? data[0].maxTriggerFreq : null;
+
 
   return (
     <ScrollArea className="h-full">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 p-1">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 p-1">
         
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Satellite /> Location Data</CardTitle>
           </CardHeader>
@@ -80,9 +93,33 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
                      <p className="text-3xl font-bold">{totalFlybys || 0}</p>
                 </CardContent>
             </Card>
+            {sampleRate && (
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-normal flex items-center gap-2"><RadioTower /> Sample Rate</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-3xl font-bold">{formatHz(sampleRate)}</p>
+                    </CardContent>
+                </Card>
+            )}
         </div>
 
-        <Card className="lg:col-span-3">
+        {(minFreq || maxFreq) && (
+             <Card className="lg:col-span-4">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-normal flex items-center gap-2"><Zap /> Trigger Frequency</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex justify-around">
+                        {minFreq && <div className="text-center"><p className="text-xs text-muted-foreground">Min</p><p className="text-2xl font-bold">{formatHz(minFreq)}</p></div>}
+                        {maxFreq && <div className="text-center"><p className="text-xs text-muted-foreground">Max</p><p className="text-2xl font-bold">{formatHz(maxFreq)}</p></div>}
+                    </div>
+                </CardContent>
+            </Card>
+        )}
+
+        <Card className="lg:col-span-4">
           <CardHeader>
             <CardTitle>Temperature Over Time</CardTitle>
           </CardHeader>
@@ -101,7 +138,7 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
         </Card>
 
         {totalFlybys > 0 && (
-          <Card className="lg:col-span-3">
+          <Card className="lg:col-span-4">
             <CardHeader>
               <CardTitle>Fly-bys Over Time</CardTitle>
             </CardHeader>
