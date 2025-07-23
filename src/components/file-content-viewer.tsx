@@ -34,7 +34,7 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
         ) : (
              <Card>
                 <CardHeader>
-                    <CardTitle>Raw Content</CardTitle>
+                    <CardTitle>File Content</CardTitle>
                 </CardHeader>
                 <CardContent>
                      <pre className="text-sm whitespace-pre-wrap">{fileContent.content}</pre>

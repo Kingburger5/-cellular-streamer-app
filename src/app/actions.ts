@@ -49,42 +49,31 @@ function findGuanoMetadata(buffer: Buffer): string | null {
         return null;
     }
     
-    // Search for the end of the metadata block, which is likely null-terminated or followed by a newline.
-    // We'll search up to 2KB from the header, which should be more than enough for GUANO metadata.
-    const searchEnd = Math.min(headerIndex + 2048, buffer.length);
+    // Search for the end of the metadata block. GUANO metadata is a single line terminated by a newline or null character.
+    const searchEnd = Math.min(headerIndex + 2048, buffer.length); // Limit search to 2KB
     let metadataEnd = -1;
 
-    // Look for a null terminator, which often marks the end of a string in binary data.
     for (let i = headerIndex; i < searchEnd; i++) {
-        if (buffer[i] === 0x00) {
+        // Look for newline or null terminator
+        if (buffer[i] === 0x0A || buffer[i] === 0x00) {
             metadataEnd = i;
             break;
         }
     }
 
     if (metadataEnd === -1) {
-      // If no null terminator, maybe it's just terminated by the end of the chunk
-      // A common pattern is that the text is followed by non-printable characters.
-      // Let's find the first non-printable ASCII character (outside of newline/tab etc.)
-      for (let i = headerIndex; i < searchEnd; i++) {
-        // Check for characters outside the printable ASCII range (32-126) and not CR/LF/Tab
-        if (buffer[i] < 32 && ![10, 13, 9].includes(buffer[i])) {
-          metadataEnd = i;
-          break;
-        }
-      }
+       metadataEnd = searchEnd;
     }
-     if (metadataEnd === -1) {
-       metadataEnd = searchEnd; // Fallback to the end of the search window
-     }
 
+    // Extract the line containing the GUANO metadata.
     let metadataBlock = buffer.toString('utf-8', headerIndex, metadataEnd).trim();
+    
+    // Ensure we only return the line that starts with GUANO
+    if (metadataBlock.startsWith("GUANO")) {
+        return metadataBlock;
+    }
 
-    // The GUANO block itself is often a single line. We find that line.
-    const lines = metadataBlock.split(/(\r\n|\n|\r)/);
-    const guanoLine = lines.find(line => line.startsWith("GUANO"));
-
-    return guanoLine || null;
+    return null;
 }
 
 export async function getFileContentAction(
