@@ -7,7 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Satellite, Thermometer, Send, FileWarning, AlertTriangle } from 'lucide-react';
 
 export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const apiKey = "AIzaSyCx-5VQB6xHfLbZsxeKDDEr71Vvr2k659A";
 
   if (!data || data.length === 0) {
     return (
@@ -51,7 +51,7 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
                   className="w-full h-full border-0 rounded-lg"
                   loading="lazy"
                   allowFullScreen
-                  src={`https://www.google.com/maps/embed/v1/view?key=${apiKey}&center=${latestLocation.latitude},${latestLocation.longitude}&zoom=14`}
+                  src={`https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${latestLocation.latitude},${latestLocation.longitude}&zoom=14`}
                 >
                 </iframe>
               </div>
