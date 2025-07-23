@@ -42,7 +42,6 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 }
 
 function findGuanoMetadata(buffer: Buffer): string | null {
-    // GUANO metadata is a UTF-8 string that starts with "GUANO" and is part of a chunk.
     const guanoHeader = Buffer.from("GUANO");
     const headerIndex = buffer.indexOf(guanoHeader);
 
@@ -50,15 +49,36 @@ function findGuanoMetadata(buffer: Buffer): string | null {
         return null;
     }
     
-    // The metadata is often in a 'junk' chunk before the 'data' chunk.
-    // Let's find the end of the metadata. It's often terminated by the start of the next RIFF chunk.
-    // A simple way is to read line by line until we no longer have valid text.
-    
-    const endOfSearch = headerIndex + 1024; // Search within a reasonable range after the header
-    let metadataBlock = buffer.toString('utf-8', headerIndex, endOfSearch);
+    // Search for the end of the metadata block, which is likely null-terminated or followed by a newline.
+    // We'll search up to 2KB from the header, which should be more than enough for GUANO metadata.
+    const searchEnd = Math.min(headerIndex + 2048, buffer.length);
+    let metadataEnd = -1;
 
-    // Clean up null characters that might terminate the string early
-    metadataBlock = metadataBlock.replace(/\0/g, '').trim();
+    // Look for a null terminator, which often marks the end of a string in binary data.
+    for (let i = headerIndex; i < searchEnd; i++) {
+        if (buffer[i] === 0x00) {
+            metadataEnd = i;
+            break;
+        }
+    }
+
+    if (metadataEnd === -1) {
+      // If no null terminator, maybe it's just terminated by the end of the chunk
+      // A common pattern is that the text is followed by non-printable characters.
+      // Let's find the first non-printable ASCII character (outside of newline/tab etc.)
+      for (let i = headerIndex; i < searchEnd; i++) {
+        // Check for characters outside the printable ASCII range (32-126) and not CR/LF/Tab
+        if (buffer[i] < 32 && ![10, 13, 9].includes(buffer[i])) {
+          metadataEnd = i;
+          break;
+        }
+      }
+    }
+     if (metadataEnd === -1) {
+       metadataEnd = searchEnd; // Fallback to the end of the search window
+     }
+
+    let metadataBlock = buffer.toString('utf-8', headerIndex, metadataEnd).trim();
 
     // The GUANO block itself is often a single line. We find that line.
     const lines = metadataBlock.split(/(\r\n|\n|\r)/);
@@ -83,23 +103,20 @@ export async function getFileContentAction(
     let content: string;
     let isBinary = false;
     let extractedData = null;
+    let rawMetadata: string | null = null;
 
     if (['.wav', '.mp3', '.ogg'].includes(extension)) {
-        content = fileBuffer.toString('base64');
+        content = "Binary audio file. Content not displayed.";
         isBinary = true;
         
         try {
             const textContent = findGuanoMetadata(fileBuffer);
+            rawMetadata = textContent; // Save the raw metadata string
             if (textContent) {
-                console.log("Found GUANO metadata:", textContent);
                 const result = await extractData({ fileContent: textContent });
                 if (result.data && result.data.length > 0) {
                   extractedData = result.data;
-                } else {
-                  console.log("AI failed to extract data from GUANO block.");
                 }
-            } else {
-               console.log("No GUANO metadata found in file.");
             }
         } catch (e) {
             console.error("Could not extract metadata from audio file:", e);
@@ -107,6 +124,7 @@ export async function getFileContentAction(
 
     } else {
         content = fileBuffer.toString("utf-8");
+        rawMetadata = content;
         try {
             const result = await extractData({ fileContent: content });
             if (result.data && result.data.length > 0) {
@@ -117,7 +135,7 @@ export async function getFileContentAction(
         }
     }
 
-    return { content, extension, name: sanitizedFilename, isBinary, extractedData };
+    return { content, extension, name: sanitizedFilename, isBinary, extractedData, rawMetadata };
   } catch (error) {
     console.error(`Error reading file ${filename}:`, error);
     return null;

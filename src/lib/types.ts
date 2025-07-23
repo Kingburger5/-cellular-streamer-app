@@ -1,3 +1,4 @@
+
 export interface UploadedFile {
   name: string;
   size: number;
@@ -18,4 +19,5 @@ export interface FileContent {
   name: string;
   isBinary?: boolean;
   extractedData?: DataPoint[] | null;
+  rawMetadata?: string | null;
 }
