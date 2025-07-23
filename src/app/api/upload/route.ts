@@ -14,68 +14,89 @@ async function ensureDirExists(dir: string) {
 }
 
 async function reassembleFile(fileIdentifier: string, originalFilename: string) {
-    const chunkDir = path.join(CHUNK_DIR, fileIdentifier);
-    const finalFilePath = path.join(UPLOAD_DIR, `${Date.now()}-${originalFilename}`);
+  const chunkDir = path.join(CHUNK_DIR, fileIdentifier);
+  const finalFilePath = path.join(UPLOAD_DIR, `${Date.now()}-${originalFilename}`);
 
-    try {
-        const chunkFilenames = (await fs.readdir(chunkDir)).sort((a, b) => parseInt(a) - parseInt(b));
-        const finalFileWriteStream = await fs.open(finalFilePath, 'w');
+  try {
+    const chunkFilenames = (await fs.readdir(chunkDir)).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    // Use file handle for efficient writing
+    const finalFileWriteStream = await fs.open(finalFilePath, 'w');
 
-        for (const chunkFilename of chunkFilenames) {
-            const chunkPath = path.join(chunkDir, chunkFilename);
-            const chunkBuffer = await fs.readFile(chunkPath);
-            await fs.writeFile(finalFileWriteStream, chunkBuffer);
-            await fs.unlink(chunkPath); // Clean up chunk
-        }
-
-        await finalFileWriteStream.close();
-        await fs.rmdir(chunkDir); // Clean up chunk directory
-
-        return finalFilePath;
-    } catch (error) {
-        console.error("Error reassembling file:", error);
-        // Cleanup on error
-        try {
-            await fs.rm(chunkDir, { recursive: true, force: true });
-        } catch (cleanupError) {
-            console.error("Error during cleanup:", cleanupError);
-        }
-        throw new Error("Failed to reassemble file.");
+    for (const chunkFilename of chunkFilenames) {
+      const chunkPath = path.join(chunkDir, chunkFilename);
+      const chunkBuffer = await fs.readFile(chunkPath);
+      await fs.writeFile(finalFileWriteStream, chunkBuffer);
+      await fs.unlink(chunkPath); // Clean up chunk
     }
+
+    await finalFileWriteStream.close();
+    await fs.rmdir(chunkDir); // Clean up chunk directory
+
+    return finalFilePath;
+  } catch (error) {
+    console.error("Error reassembling file:", error);
+    // Cleanup on error
+    try {
+      await fs.rm(chunkDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      console.error("Error during cleanup:", cleanupError);
+    }
+    throw new Error("Failed to reassemble file.");
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const chunk = formData.get("chunk") as File | null;
-    const fileIdentifier = formData.get("fileIdentifier") as string | null;
-    const chunkIndex = formData.get("chunkIndex") as string | null;
-    const totalChunks = formData.get("totalChunks") as string | null;
-    const originalFilename = formData.get("originalFilename") as string | null;
+    const filename = request.headers.get("x-filename");
+    const chunkOffsetHeader = request.headers.get("x-chunk-offset");
+    const chunkSizeHeader = request.headers.get("x-chunk-size");
+    const totalSizeHeader = request.headers.get("x-total-size");
 
-    if (!chunk || !fileIdentifier || chunkIndex === null || totalChunks === null || !originalFilename) {
-      return NextResponse.json({ error: "Missing required upload parameters." }, { status: 400 });
+    const chunkOffset = chunkOffsetHeader ? parseInt(chunkOffsetHeader, 10) : NaN;
+    const chunkSize = chunkSizeHeader ? parseInt(chunkSizeHeader, 10) : NaN;
+    const totalSize = totalSizeHeader ? parseInt(totalSizeHeader, 10) : NaN;
+
+
+    if (!filename || isNaN(chunkOffset) || isNaN(chunkSize) || isNaN(totalSize)) {
+      return NextResponse.json({ error: "Missing or invalid required headers." }, { status: 400 });
     }
+
+    // Use filename and total size as a simple file identifier, sanitizing filename
+    const sanitizedFilename = path.basename(filename);
+    const fileIdentifier = `${sanitizedFilename.replace(/[^a-zA-Z0-9.-]/g, '_')}-${totalSize}`;
     
+    const chunkIndex = Math.floor(chunkOffset / chunkSize);
+    const totalChunks = Math.ceil(totalSize / chunkSize);
+
     await ensureDirExists(UPLOAD_DIR);
     const chunkDir = path.join(CHUNK_DIR, fileIdentifier);
     await ensureDirExists(chunkDir);
 
-    const chunkPath = path.join(chunkDir, chunkIndex);
-    const chunkBuffer = Buffer.from(await chunk.arrayBuffer());
+    const chunkPath = path.join(chunkDir, chunkIndex.toString());
+    const chunkBuffer = Buffer.from(await request.arrayBuffer()); // Read the raw chunk data
+
+    if (chunkBuffer.length === 0) {
+       return NextResponse.json({ error: "Received an empty chunk." }, { status: 400 });
+    }
+    
     await fs.writeFile(chunkPath, chunkBuffer);
 
-    const isLastChunk = parseInt(chunkIndex, 10) === parseInt(totalChunks, 10) - 1;
+    // Check if all chunks have been received
+    const existingChunks = await fs.readdir(chunkDir);
+    const isLastChunk = existingChunks.length === totalChunks;
+
     if (isLastChunk) {
-        const finalPath = await reassembleFile(fileIdentifier, originalFilename);
-        return NextResponse.json({ message: "File reassembled successfully.", filename: path.basename(finalPath) }, { status: 201 });
+      const finalPath = await reassembleFile(fileIdentifier, sanitizedFilename);
+      return NextResponse.json({ message: "File reassembled successfully.", filename: path.basename(finalPath) }, { status: 201 });
     }
 
     return NextResponse.json({ message: "Chunk uploaded successfully." }, { status: 200 });
   } catch (error) {
     console.error("Upload error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: "Internal Server Error", details: errorMessage },
       { status: 500 }
     );
   }
