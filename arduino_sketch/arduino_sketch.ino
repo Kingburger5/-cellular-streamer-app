@@ -1,270 +1,282 @@
 
-#define TINY_GSM_MODEM_SIM7600
 #include <HardwareSerial.h>
 #include <SD.h>
 #include <SPI.h>
 
-// ===== SERIAL PORTS & PINS =====
-#define MODEM_TX 17
-#define MODEM_RX 16
-#define MODEM_BAUD 115200
-#define SD_CS 5
+// --- Configuration ---
+const char* apn = "vodafone"; // Your APN
+const char* gprsUser = "";    // GPRS User, if required
+const char* gprsPass = "";    // GPRS Password, if required
 
-// ===== FILE UPLOAD SETTINGS =====
-#define CHUNK_SIZE 4096 // Size of each chunk in bytes
-#define MAX_RETRIES 3   // Number of retries for each chunk
-
-// ===== SERVER DETAILS =====
-// IMPORTANT: Update this to your development server URL for testing.
-// This should be the host only, without "http://" or a port number.
-const char* server = "cellular-data-streamer.web.app";
+// Update this to your development server's public URL
+const String server = "cellular-data-streamer.web.app";
 const int serverPort = 443;
-const char* endpoint = "/api/upload";
+const String resource = "/api/upload";
 
-// ===== GLOBALS =====
-HardwareSerial modemSerial(1); // Use UART 1 for the modem
+// Modem pins
+#define MODEM_RX 16
+#define MODEM_TX 17
+#define MODEM_BAUD 115200
 
-// ===== FORWARD DECLARATIONS =====
-void sendFileChunks(const char* filename);
-bool sendATCommand(const String& cmd, const String& expectedResponse, String* response, unsigned long timeout);
-bool configureSSL();
-bool openHttpsSession();
-void closeHttpsSession();
+// SD card pins
+#define SD_CS 5
+#define SD_MOSI 23
+#define SD_MISO 19
+#define SD_SCK 18
 
-// =================================================================
-//                             SETUP
-// =================================================================
-void setup() {
-  Serial.begin(115200);
-  while (!Serial);
-  delay(1000);
+// --- Globals ---
+HardwareSerial modemSerial(1);
+const int CHUNK_SIZE = 4096; // 4 KB chunks
+char data[CHUNK_SIZE];
 
-  Serial.println("\n🔌 Booting...");
-
-  // Initialize SD Card
-  if (!SD.begin(SD_CS)) {
-    Serial.println("❌ SD card failed or not present.");
-    while (true);
-  }
-  Serial.println("✅ SD card ready.");
-
-  // Initialize Modem
-  Serial.println("Initializing modem...");
-  modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
-  delay(3000);
-
-  // Send a basic AT command to check if modem is responsive
-  if (!sendATCommand("AT", "OK", NULL, 1000)) {
-     Serial.println("❌ Modem not responding. Check connections and power.");
-     while(true);
-  }
-  
-  Serial.println("✅ Modem restarted.");
-  Serial.println("--- Modem Status ---");
-  sendATCommand("ATI", "OK", NULL, 1000);
-  sendATCommand("AT+CSQ", "OK", NULL, 1000);
-  sendATCommand("AT+CPIN?", "OK", NULL, 1000);
-  sendATCommand("AT+CCID", "OK", NULL, 1000);
-  sendATCommand("AT+COPS?", "OK", NULL, 1000);
-  Serial.println("--------------------");
-
-  // Configure SSL/TLS settings
-  if (!configureSSL()) {
-    Serial.println("❌ Failed to configure SSL context.");
-    while (true);
-  }
-
-  // Connect to network
-  Serial.println("📡 Connecting to network...");
-  if (!sendATCommand("AT+CGATT=1", "OK", NULL, 10000)) {
-    Serial.println("❌ Failed to attach to GPRS.");
-    while(true);
-  }
-  Serial.println("✅ GPRS connected.");
-
-  // Get local IP address
-  sendATCommand("AT+IPADDR", "+IPADDR", NULL, 5000);
-
-  // Start the upload process
-  sendFileChunks("/sigma2.wav");
-}
-
-// =================================================================
-//                              LOOP
-// =================================================================
-void loop() {
-  // Keep empty. The process runs once in setup().
-}
-
-
-// =================================================================
-//                        CORE FUNCTIONS
-// =================================================================
+// --- Helper Functions ---
 
 /**
- * @brief Configures the SSL context for HTTPS connections.
- * This function sets the SSL version and tells the modem not to verify the server certificate,
- * which is often necessary for development environments or self-signed certificates.
- * @return true if SSL was configured successfully, false otherwise.
+ * @brief Sends an AT command and waits for a specific response.
+ * @param command The AT command to send.
+ * @param expectedResponse The response to wait for.
+ * @param timeout The timeout in milliseconds.
+ * @return True if the expected response is received, false otherwise.
+ */
+bool sendAT(const String& command, const String& expectedResponse, unsigned long timeout) {
+    String response = "";
+    unsigned long startTime = millis();
+    
+    Serial.print("[AT SEND] ");
+    Serial.println(command);
+
+    modemSerial.println(command);
+
+    while (millis() - startTime < timeout) {
+        if (modemSerial.available()) {
+            char c = modemSerial.read();
+            response += c;
+            if (response.indexOf(expectedResponse) != -1) {
+                Serial.print("[AT RECV] ");
+                Serial.println(response);
+                return true;
+            }
+        }
+    }
+
+    Serial.println("[DEBUG] Timeout waiting for: " + expectedResponse);
+    Serial.println("[DEBUG] Received: " + response);
+    return false;
+}
+
+
+/**
+ * @brief Configures the modem's SSL context for HTTPS.
+ * Sets SSL version and disables strict certificate authentication.
+ * @return True on success, false on failure.
  */
 bool configureSSL() {
-    Serial.println("🔧 Configuring SSL...");
-    // Set SSL context to not validate server certificate (level 0)
-    if (!sendATCommand("AT+CSSLCFG=\"sslversion\",1,3", "OK", NULL, 2000)) return false;
-    if (!sendATCommand("AT+CSSLCFG=\"authmode\",1,0", "OK", NULL, 2000)) return false;
-    if (!sendATCommand("AT+SHSSL=1,1", "OK", NULL, 2000)) return false;
-    Serial.println("✅ SSL context configured.");
+    Serial.println("? Configuring SSL...");
+
+    // Set SSL context to support TLS 1.2 (3)
+    if (!sendAT("AT+CSSLCFG=\"sslversion\",1,3", "OK", 5000)) return false;
+
+    // Set authentication mode to 0 (no server certificate verification) for development
+    if (!sendAT("AT+CSSLCFG=\"authmode\",1,0", "OK", 5000)) return false;
+    
+    Serial.println("? SSL Configured.");
     return true;
 }
 
+
 /**
- * @brief Opens a new HTTPS session with the server.
- * @return true if the session was opened successfully, false otherwise.
+ * @brief Opens a secure HTTPS session with the server.
+ * @return True if the session is opened, false otherwise.
  */
 bool openHttpsSession() {
-  if (!sendATCommand("AT+CHTTPSSTART", "OK", NULL, 5000)) return false;
-  String opseCmd = "AT+CHTTPSOPSE=\"" + String(server) + "\"," + String(serverPort);
-  // Wait specifically for "+CHTTPSOPSE: 0" which indicates success
-  if (!sendATCommand(opseCmd, "+CHTTPSOPSE: 0", NULL, 15000)) {
-     Serial.println("❌ Failed to open HTTPS session with server.");
-     return false;
-  }
-  return true;
+    if (!sendAT("AT+CHTTPSSTART", "+CHTTPSSTART: 0", 10000)) {
+        // Fallback for some firmware versions
+        if (!sendAT("AT+CHTTPSSTART", "OK", 10000)) return false;
+    }
+
+    String opseCommand = "AT+CHTTPSOPSE=\"" + server + "\"," + serverPort;
+    if (!sendAT(opseCommand, "+CHTTPSOPSE: 0", 15000)) {
+        // Fallback for some firmware versions
+        if (!sendAT(opseCommand, "OK", 15000)) {
+            Serial.println("? Failed to open HTTPS session with server.");
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
  * @brief Closes the current HTTPS session.
  */
 void closeHttpsSession() {
-  sendATCommand("AT+CHTTPSCLSE", "OK", NULL, 5000);
-  sendATCommand("AT+CHTTPSSTOP", "OK", NULL, 5000);
+    sendAT("AT+CHTTPSCLSE", "+CHTTPSCLSE: 0", 5000);
+    sendAT("AT+CHTTPSSTOP", "+CHTTPSSTOP: 0", 5000);
+}
+
+/**
+ * @brief Sends a single file chunk via HTTPS POST using AT commands.
+ * @param file The file object to read from.
+ * @param filename The name of the file being uploaded.
+ * @param offset The current position/offset in the file.
+ * @param totalSize The total size of the file.
+ * @return True if the chunk was sent and acknowledged, false otherwise.
+ */
+bool sendChunk(File& file, const char* filename, size_t offset, size_t totalSize) {
+    size_t chunkSize = file.read(data, CHUNK_SIZE);
+    if (chunkSize == 0) return false; // No more data to read
+
+    // --- Construct Headers ---
+    String headers = "X-Filename: " + String(filename) + "\r\n" +
+                     "X-Chunk-Offset: " + String(offset) + "\r\n" +
+                     "X-Chunk-Size: " + String(chunkSize) + "\r\n" +
+                     "X-Total-Size: " + String(totalSize) + "\r\n" +
+                     "Content-Type: application/octet-stream\r\n";
+
+    int headersLength = headers.length();
+    
+    // --- Construct AT Command ---
+    // AT+CHTTPSPOST=<url>,<header_len>,<content_len>,<content_timeout>
+    String postCommand = "AT+CHTTPSPOST=\"" + resource + "\"," + headersLength + "," + chunkSize + ",10000";
+
+    // --- Send Command and Wait for Prompt ---
+    if (!sendAT(postCommand, ">", 10000)) {
+        Serial.println("? Modem did not respond to POST command. Aborting.");
+        return false;
+    }
+
+    // --- Send Headers ---
+    Serial.print("[HTTP HEADERS] ");
+    Serial.print(headers);
+    modemSerial.print(headers);
+
+    // --- Send Data Chunk ---
+    Serial.printf("[HTTP BODY] Sending %d bytes...\n", chunkSize);
+    modemSerial.write((uint8_t*)data, chunkSize);
+    
+    // --- Wait for Server Response ---
+    // A successful response should contain "+CHTTPS: POST,2" (e.g., 200, 201)
+    return sendAT("+CHTTPS: POST,2", "OK", 20000);
 }
 
 
 /**
- * @brief Uploads a file from the SD card to the server in chunks.
- * Uses raw AT commands for HTTPS POST requests.
- * @param filename The full path of the file to upload (e.g., "/data.txt").
+ * @brief Reads a file from the SD card and uploads it in chunks.
+ * @param filename The name of the file to upload.
  */
 void sendFileChunks(const char* filename) {
-  File file = SD.open(filename);
-  if (!file) {
-    Serial.printf("❌ Failed to open file: %s\n", filename);
-    return;
-  }
+    File file = SD.open(filename, FILE_READ);
+    if (!file) {
+        Serial.println("? Failed to open file for reading.");
+        return;
+    }
 
-  size_t totalSize = file.size();
-  Serial.printf("📤 Preparing to upload %s (%d bytes)\n", filename, totalSize);
-  
-  size_t offset = 0;
-  bool uploadOk = true;
+    size_t fileSize = file.size();
+    Serial.printf("? Preparing to upload %s (%d bytes)\n", filename, fileSize);
 
-  while (offset < totalSize) {
-    // --- 1. Prepare Chunk Data ---
-    size_t chunkSize = min((size_t)CHUNK_SIZE, totalSize - offset);
-    uint8_t buffer[chunkSize];
-    file.seek(offset);
-    file.read(buffer, chunkSize);
+    if (!openHttpsSession()) {
+        Serial.println("? Initial HTTPS session failed. Aborting.");
+        file.close();
+        return;
+    }
 
-    bool chunkSent = false;
-    for (int retry = 0; retry < MAX_RETRIES; retry++) {
-      Serial.printf("  Attempt %d/%d to send chunk at offset %d...\n", retry + 1, MAX_RETRIES, offset);
+    while (file.available()) {
+        size_t offset = file.position();
+        if (!sendChunk(file, filename, offset, fileSize)) {
+            Serial.printf("? Failed to upload chunk at offset %d. Retrying session...\n", offset);
+            
+            // Close the failed session and try opening a new one
+            closeHttpsSession();
+            if (!openHttpsSession()) {
+                 Serial.println("? Could not re-establish HTTPS session. Aborting.");
+                 break; 
+            }
+            
+            // Rewind file pointer to retry the same chunk
+            file.seek(offset);
 
-      if (openHttpsSession()) {
-        // --- 2. Construct Headers ---
-        String headers = "X-Filename: " + String(filename) + "\r\n";
-        headers += "X-Chunk-Offset: " + String(offset) + "\r\n";
-        headers += "X-Chunk-Size: " + String(chunkSize) + "\r\n";
-        headers += "X-Total-Size: " + String(totalSize) + "\r\n";
-
-        // --- 3. Send POST Command ---
-        long timeout = 20000; // 20-second timeout for the whole POST operation
-        String postCmd = "AT+CHTTPSPOST=\"" + String(endpoint) + "\"," + String(headers.length()) + "," + String(chunkSize) + "," + String(timeout);
-        
-        String response;
-        if (sendATCommand(postCmd, ">", &response, 5000)) {
-          // --- 4. Send Headers and Payload ---
-          modemSerial.print(headers);
-          modemSerial.write(buffer, chunkSize);
-          modemSerial.flush();
-
-          // --- 5. Check for Success Response ---
-          if (sendATCommand("", "+CHTTPS: POST,200", &response, timeout)) {
-             Serial.printf("✅ Chunk sent successfully (Offset: %d, Size: %d)\n", offset, chunkSize);
-             chunkSent = true;
-          } else {
-             Serial.println("❌ Chunk upload failed: Server did not respond with 200 OK.");
-             Serial.println("[SERVER RESPONSE]");
-             Serial.println(response);
-          }
-        } else {
-           Serial.println("❌ Modem did not respond to POST command. Aborting.");
+            // Retry sending the chunk with the new session
+            if (!sendChunk(file, filename, offset, fileSize)) {
+                 Serial.printf("? Chunk upload failed again at offset %d. Aborting.\n", offset);
+                 break;
+            }
         }
-        
-        // --- 6. Clean Up Session ---
-        closeHttpsSession();
-
-      } else {
-        Serial.println("❌ Could not establish HTTPS session for chunk.");
-      }
-
-      if (chunkSent) {
-        break; // Exit retry loop if successful
-      }
-      
-      delay(3000); // Wait before retrying
     }
 
-    if (!chunkSent) {
-      Serial.printf("❌ Failed to upload chunk at offset %d after %d retries. Aborting.\n", offset, MAX_RETRIES);
-      uploadOk = false;
-      break; // Exit main while loop
-    }
-
-    offset += chunkSize;
-    delay(500); // Small delay between chunks
-  }
-
-  file.close();
-  if (uploadOk) {
-    Serial.println("✅ File upload finished successfully.");
-  } else {
-    Serial.println("❌ File upload failed.");
-  }
+    closeHttpsSession();
+    file.close();
+    Serial.println("? File upload finished.");
 }
 
 
-/**
- * @brief Sends an AT command and waits for an expected response.
- * @param cmd The AT command to send.
- * @param expectedResponse The string to look for in the response.
- * @param response Pointer to a String to store the full response.
- * @param timeout The maximum time to wait for the response.
- * @return true if the expected response was found, false otherwise.
- */
-bool sendATCommand(const String& cmd, const String& expectedResponse, String* response, unsigned long timeout) {
-  if (cmd.length() > 0) {
-    Serial.println("[AT SEND] " + cmd);
-    modemSerial.println(cmd);
-  }
+// --- Main Setup and Loop ---
 
-  unsigned long start = millis();
-  String buffer = "";
-  
-  while (millis() - start < timeout) {
+void setup() {
+    Serial.begin(115200);
+    while (!Serial);
+
+    Serial.println("? Booting...");
+
+    // Initialize SD Card
+    SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+    if (!SD.begin(SD_CS)) {
+        Serial.println("? SD Card initialization failed!");
+        while (1);
+    }
+    Serial.println("? SD card ready.");
+
+    // Initialize Modem
+    modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_TX, MODEM_RX);
+    Serial.println("Initializing modem...");
+
+    if (!sendAT("AT", "OK", 1000)) {
+        Serial.println("? Modem not responding.");
+        while(1);
+    }
+    Serial.println("? Modem restarted.");
+
+    // Print Modem Status
+    Serial.println("--- Modem Status ---");
+    sendAT("ATI", "OK", 1000);
+    sendAT("AT+CSQ", "OK", 1000);
+    sendAT("AT+CPIN?", "READY", 5000);
+    sendAT("AT+CCID", "OK", 1000);
+    sendAT("AT+COPS?", "OK", 5000);
+    Serial.println("--------------------");
+
+    // Configure SSL
+    if (!configureSSL()) {
+        Serial.println("? Failed to configure SSL context.");
+        // We can still try to continue, some modems might not need this
+    }
+
+    // Connect to GPRS
+    Serial.println("? Connecting to network...");
+    if (!sendAT("AT+CGATT=1", "OK", 10000)) {
+        Serial.println("? Failed to attach to GPRS.");
+        while(1);
+    }
+    
+    // Set APN
+    sendAT("AT+CSTT=\"" + String(apn) + "\",\"" + String(gprsUser) + "\",\"" + String(gprsPass) + "\"", "OK", 10000);
+
+    // Bring up wireless connection
+    sendAT("AT+CIICR", "OK", 20000);
+    
+    Serial.println("? GPRS connected.");
+
+    // Get Local IP
+    sendAT("AT+IPADDR", "+IPADDR", 10000);
+
+    // Start upload
+    sendFileChunks("/sigma2.wav");
+}
+
+void loop() {
+    // Keep modem serial communication lines open
     if (modemSerial.available()) {
-      char c = modemSerial.read();
-      buffer += c;
+        Serial.write(modemSerial.read());
     }
-    if (buffer.indexOf(expectedResponse) != -1) {
-      if (response) *response = buffer;
-      // Serial.println("[AT RECV] " + buffer); // Verbose logging
-      return true;
+    if (Serial.available()) {
+        modemSerial.write(Serial.read());
     }
-  }
-
-  Serial.println("[DEBUG] Timeout waiting for: " + expectedResponse);
-  Serial.println("[DEBUG] Received: " + buffer);
-  if (response) *response = buffer;
-  return false;
 }
