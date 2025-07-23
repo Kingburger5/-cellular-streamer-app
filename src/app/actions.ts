@@ -62,8 +62,8 @@ function findGuanoMetadata(buffer: Buffer): string | null {
     }
 
     if (metadataEnd === -1) {
-       // If no terminator is found, we can't safely determine the end.
-       return null;
+       // If no terminator is found, we can't safely determine the end, but we can try to return what we have up to the search limit
+       metadataEnd = searchEnd;
     }
 
     // Extract the line containing the GUANO metadata.
@@ -71,7 +71,13 @@ function findGuanoMetadata(buffer: Buffer): string | null {
     
     // Ensure we only return the line that starts with GUANO
     if (metadataBlock.startsWith("GUANO")) {
-        return metadataBlock;
+        // The metadata might contain non-printable characters after the main content, so we clean it up.
+        // A common scenario is a null character followed by other data.
+        const nullCharIndex = metadataBlock.indexOf('\0');
+        if (nullCharIndex !== -1) {
+            metadataBlock = metadataBlock.substring(0, nullCharIndex);
+        }
+        return metadataBlock.trim();
     }
 
     return null;
@@ -97,10 +103,11 @@ export async function getFileContentAction(
 
     if (['.wav', '.mp3', '.ogg'].includes(extension)) {
         isBinary = true;
+        // For audio playback, we need the entire file content as base64
+        content = fileBuffer.toString('base64');
         rawMetadata = findGuanoMetadata(fileBuffer);
         
         if (rawMetadata) {
-            content = rawMetadata; // For now, just show the metadata as the main content
             try {
                 const result = await extractData({ fileContent: rawMetadata });
                 if (result.data && result.data.length > 0) {
@@ -110,8 +117,6 @@ export async function getFileContentAction(
                 console.error("Could not extract metadata from audio file:", e);
                 // Fail gracefully, extractedData will remain null
             }
-        } else {
-            content = "Binary audio file. No GUANO metadata found.";
         }
 
     } else {
