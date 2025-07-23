@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useCallback } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
-import { getFilesAction, getFileContentAction, generateSummaryAction, deleteFileAction } from "@/app/actions";
+import { getFilesAction, getFileContentAction, deleteFileAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
 import { FileList } from "./file-list";
 import { FileDisplay } from "./file-display";
@@ -16,7 +16,6 @@ export function MainView({ initialFiles }: MainViewProps) {
   const [files, setFiles] = useState<UploadedFile[]>(initialFiles);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [isLoading, startTransition] = useTransition();
@@ -55,7 +54,6 @@ export function MainView({ initialFiles }: MainViewProps) {
   const handleSelectFile = useCallback((name: string) => {
     setSelectedFileName(name);
     setFileContent(null);
-    setSummary(null);
     setError(null);
 
     startTransition(async () => {
@@ -70,28 +68,6 @@ export function MainView({ initialFiles }: MainViewProps) {
         return;
       }
       setFileContent(contentResult);
-      
-      const fileContentForSummary = contentResult.textContentForSummary || (contentResult.isBinary ? "" : contentResult.content);
-
-      if (fileContentForSummary) {
-        const summaryResult = await generateSummaryAction({
-            filename: contentResult.name,
-            fileContent: fileContentForSummary,
-        });
-
-        if ("error" in summaryResult) {
-            setSummary(summaryResult.error);
-            toast({
-            variant: "destructive",
-            title: "AI Summary Error",
-            description: summaryResult.error,
-            });
-        } else {
-            setSummary(summaryResult.summary);
-        }
-      } else {
-        setSummary("No text content available to generate a summary.");
-      }
     });
   }, [toast]);
 
@@ -106,7 +82,6 @@ export function MainView({ initialFiles }: MainViewProps) {
             if (selectedFileName === name) {
                 setSelectedFileName(null);
                 setFileContent(null);
-                setSummary(null);
                 setError(null);
             }
             await handleRefresh(name);
@@ -140,10 +115,9 @@ export function MainView({ initialFiles }: MainViewProps) {
         />
       </Sidebar>
       <SidebarInset className="p-0 h-screen overflow-hidden">
-        <div className="h-full w-full">
+        <div className="h-full w-full p-4">
             <FileDisplay
                 fileContent={fileContent}
-                summary={summary}
                 isLoading={isLoading}
                 error={error}
             />
