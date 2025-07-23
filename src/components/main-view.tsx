@@ -71,12 +71,11 @@ export function MainView({ initialFiles }: MainViewProps) {
       }
       setFileContent(contentResult);
       
-      const fileContentForSummary = contentResult.isBinary ? (contentResult.extractedData ? JSON.stringify(contentResult.extractedData) : "") : contentResult.content;
+      const fileContentForSummary = contentResult.textContentForSummary || (contentResult.isBinary ? "Binary content." : contentResult.content);
 
       const summaryResult = await generateSummaryAction({
         filename: contentResult.name,
         fileContent: fileContentForSummary,
-        isBinary: contentResult.isBinary
       });
 
       if ("error" in summaryResult) {
@@ -106,7 +105,7 @@ export function MainView({ initialFiles }: MainViewProps) {
                 setSummary(null);
                 setError(null);
             }
-            await handleRefresh();
+            await handleRefresh(name);
         } else {
             toast({
                 variant: "destructive",

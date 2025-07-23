@@ -5,7 +5,7 @@ import type { FileContent, DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning, AlertCircle } from 'lucide-react';
 
 const parseData = (file: FileContent): DataPoint[] | null => {
   try {
@@ -42,19 +42,20 @@ const parseData = (file: FileContent): DataPoint[] | null => {
 
 export function DataVisualizer({ data: propData, rawFileContent }: { data: DataPoint[] | null, rawFileContent?: FileContent | null }) {
   const data = useMemo(() => {
-    // If data is passed directly, use it. This is for the WAV file case.
+    // If data is passed directly, use it. This is for the WAV file case with extracted metadata.
     if (propData) return propData;
     // Otherwise, try to parse from the raw file content. This is for CSV/JSON.
     if (rawFileContent) return parseData(rawFileContent);
     return null;
   }, [propData, rawFileContent]);
 
+
   if (data === null) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
         <FileWarning className="w-12 h-12 mb-4" />
         <h3 className="font-semibold">No Visualization Available</h3>
-        <p className="text-sm">This file type cannot be visualized as data.</p>
+        <p className="text-sm">This file type cannot be visualized as data, or parsing failed.</p>
         <p className="text-xs mt-2">Try the 'Pretty' or 'Raw' tabs for other views.</p>
       </div>
     );
@@ -63,9 +64,10 @@ export function DataVisualizer({ data: propData, rawFileContent }: { data: DataP
   if (data.length === 0) {
       return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
-        <FileWarning className="w-12 h-12 mb-4" />
-        <h3 className="font-semibold">Could not parse data</h3>
-         <p className="text-sm">Ensure the file is valid JSON or CSV or a WAV with embedded metadata. Headers should include: timestamp, latitude, longitude, temperature, flybys.</p>
+        <AlertCircle className="w-12 h-12 mb-4" />
+        <h3 className="font-semibold">No Data to Visualize</h3>
+         <p className="text-sm">Could not extract any data points from the file.</p>
+         <p className="text-xs mt-2">Ensure the file is valid JSON, CSV or a WAV with embedded GUANO metadata.</p>
       </div>
     );
   }
@@ -91,7 +93,7 @@ export function DataVisualizer({ data: propData, rawFileContent }: { data: DataP
              <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <div className="w-full h-px bg-border absolute top-1/2 left-0"></div>
                 <div className="h-full w-px bg-border absolute left-1/2 top-0"></div>
-                {latestLocation ? (
+                {latestLocation && latestLocation.latitude && latestLocation.longitude ? (
                     <>
                         <div className="text-center">
                             <p className="font-bold text-lg">{latestLocation.latitude.toFixed(4)}, {latestLocation.longitude.toFixed(4)}</p>
@@ -123,7 +125,7 @@ export function DataVisualizer({ data: propData, rawFileContent }: { data: DataP
                     <CardTitle className="text-base font-normal flex items-center gap-2"><Send /> Total Fly-bys</CardTitle>
                 </CardHeader>
                 <CardContent>
-                     <p className="text-3xl font-bold">{totalFlybys}</p>
+                     <p className="text-3xl font-bold">{totalFlybys || 0}</p>
                 </CardContent>
             </Card>
         </div>
@@ -146,23 +148,25 @@ export function DataVisualizer({ data: propData, rawFileContent }: { data: DataP
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Fly-bys Over Time</CardTitle>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="flybys" fill="var(--color-chart-2)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {totalFlybys > 0 && (
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Fly-bys Over Time</CardTitle>
+            </CardHeader>
+            <CardContent className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="flybys" fill="var(--color-chart-2)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
 
       </div>
     </ScrollArea>

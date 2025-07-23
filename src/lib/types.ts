@@ -9,7 +9,7 @@ export interface DataPoint {
   latitude: number;
   longitude: number;
   temperature: number;
-  flybys: number;
+  flybys?: number;
 }
 
 export interface FileContent {
@@ -18,4 +18,5 @@ export interface FileContent {
   name: string;
   isBinary?: boolean;
   extractedData?: DataPoint[] | null;
+  textContentForSummary?: string;
 }

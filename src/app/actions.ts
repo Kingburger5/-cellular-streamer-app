@@ -57,13 +57,15 @@ export async function getFileContentAction(
     let content: string;
     let isBinary = false;
     let extractedData = null;
+    let textContentForSummary = "";
 
     if (['.wav', '.mp3', '.ogg'].includes(extension)) {
         content = fileBuffer.toString('base64');
         isBinary = true;
-        // Also try to read as text to extract metadata
+        
         try {
             const textContent = fileBuffer.toString('utf-8');
+            textContentForSummary = textContent; // Use this for summary later
             const result = await extractData({ fileContent: textContent });
             if (result.data && result.data.length > 0) {
               extractedData = result.data;
@@ -74,9 +76,10 @@ export async function getFileContentAction(
 
     } else {
         content = fileBuffer.toString("utf-8");
+        textContentForSummary = content;
     }
 
-    return { content, extension, name: sanitizedFilename, isBinary, extractedData };
+    return { content, extension, name: sanitizedFilename, isBinary, extractedData, textContentForSummary };
   } catch (error) {
     console.error(`Error reading file ${filename}:`, error);
     return null;
@@ -86,13 +89,8 @@ export async function getFileContentAction(
 export async function generateSummaryAction(input: {
   filename: string;
   fileContent: string;
-  isBinary?: boolean;
 }): Promise<{ summary: string } | { error: string }> {
   try {
-    // Avoid sending large binary content to the summarizer
-    if (input.isBinary) {
-      return { summary: "This is a binary file. The summary is based on any parsable text content." };
-    }
     const result = await summarizeFile({
         filename: input.filename,
         fileContent: input.fileContent,
