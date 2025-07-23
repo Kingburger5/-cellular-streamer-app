@@ -41,35 +41,48 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
   }
 }
 
+/**
+ * Searches for a GUANO metadata chunk within a WAV file buffer.
+ * This function parses the RIFF chunk structure to reliably find the metadata.
+ * @param buffer The WAV file content as a Buffer.
+ * @returns The GUANO metadata string if found, otherwise null.
+ */
 function findGuanoMetadata(buffer: Buffer): string | null {
-  const guanoHeader = Buffer.from("GUANO");
-  const headerIndex = buffer.indexOf(guanoHeader);
-
-  if (headerIndex === -1) {
-    return null;
-  }
-  
-  // Search for the end of the metadata block, which is terminated by a newline.
-  const searchEnd = Math.min(headerIndex + 8192, buffer.length);
-  let metadataEnd = -1;
-
-  // We are looking for the Line Feed character (0x0a)
-  for (let i = headerIndex; i < searchEnd; i++) {
-    if (buffer[i] === 0x0a) {
-      metadataEnd = i;
-      break;
+  try {
+    // Check for 'RIFF' and 'WAVE' headers
+    if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
+      console.error("Not a valid RIFF/WAVE file.");
+      return null;
     }
-  }
 
-  if (metadataEnd === -1) {
+    let offset = 12; // Start after the RIFF header
+
+    // Loop through all chunks
+    while (offset < buffer.length) {
+      const chunkId = buffer.toString('ascii', offset, offset + 4);
+      const chunkSize = buffer.readUInt32LE(offset + 4);
+      
+      offset += 8; // Move pointer past chunk header
+
+      if (chunkId.trim() === 'GUANO') {
+        // Found the GUANO chunk. The actual metadata might be null-terminated.
+        const guanoData = buffer.subarray(offset, offset + chunkSize);
+        // Find the first null character, as the chunk can be padded.
+        const nullCharIndex = guanoData.indexOf(0);
+        const end = nullCharIndex !== -1 ? nullCharIndex : guanoData.length;
+        return guanoData.subarray(0, end).toString('utf-8').trim();
+      }
+
+      // Move to the next chunk. Chunk size must be even.
+      const nextOffset = offset + chunkSize;
+      offset = nextOffset % 2 === 0 ? nextOffset : nextOffset + 1;
+    }
+
+    return null; // GUANO chunk not found
+  } catch (error) {
+    console.error("Error parsing WAV file for GUANO metadata:", error);
     return null;
   }
-
-  // Extract the metadata block and decode it as UTF-8.
-  // The end position is exclusive for subarray.
-  const metadataBlock = buffer.subarray(headerIndex, metadataEnd).toString('utf-8').trim();
-  
-  return metadataBlock;
 }
 
 

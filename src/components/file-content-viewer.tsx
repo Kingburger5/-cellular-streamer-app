@@ -8,34 +8,15 @@ import { ScrollArea } from "./ui/scroll-area";
 import { WaveFileViewer } from "./wave-file-viewer";
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
-  const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
   const isAudio = ['.wav', '.mp3', 'ogg'].includes(fileContent.extension);
 
   if (isAudio) {
-      if (hasVisualization) {
-        return <WaveFileViewer fileContent={fileContent} />;
-      }
-      
-      // Fallback for audio files without visualizable metadata
-      return (
-         <Card className="h-full">
-            <CardHeader>
-                <CardTitle>Audio File</CardTitle>
-                <CardDescription>No parsable GUANO metadata was found in this file.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="flex flex-col items-center justify-center p-4">
-                    <h3 className="text-lg font-medium mb-2">{fileContent.name.substring(fileContent.name.indexOf('-') + 1)}</h3>
-                    <audio controls src={`data:audio/wav;base64,${fileContent.content}`} className="w-full max-w-md">
-                        Your browser does not support the audio element.
-                    </audio>
-                </div>
-            </CardContent>
-         </Card>
-      );
+    return <WaveFileViewer fileContent={fileContent} />;
   }
-
-  // Handle non-audio files that might have visualizable data (e.g. text/csv)
+  
+  // Fallback for non-audio text-based files like JSON, CSV, TXT
+  // which might also contain parsable data.
+  const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
   if (hasVisualization) {
     return (
         <ScrollArea className="h-full">
@@ -59,7 +40,7 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
     )
   }
   
-  // Fallback for non-audio, non-visualizable files
+  // Fallback for files with no visualizable data
   return (
      <Card className="h-full">
         <CardHeader>
