@@ -71,22 +71,26 @@ export function MainView({ initialFiles }: MainViewProps) {
       }
       setFileContent(contentResult);
       
-      const fileContentForSummary = contentResult.textContentForSummary || (contentResult.isBinary ? "Binary content." : contentResult.content);
+      const fileContentForSummary = contentResult.textContentForSummary || (contentResult.isBinary ? "" : contentResult.content);
 
-      const summaryResult = await generateSummaryAction({
-        filename: contentResult.name,
-        fileContent: fileContentForSummary,
-      });
-
-      if ("error" in summaryResult) {
-        setSummary(summaryResult.error);
-        toast({
-          variant: "destructive",
-          title: "AI Summary Error",
-          description: summaryResult.error,
+      if (fileContentForSummary) {
+        const summaryResult = await generateSummaryAction({
+            filename: contentResult.name,
+            fileContent: fileContentForSummary,
         });
+
+        if ("error" in summaryResult) {
+            setSummary(summaryResult.error);
+            toast({
+            variant: "destructive",
+            title: "AI Summary Error",
+            description: summaryResult.error,
+            });
+        } else {
+            setSummary(summaryResult.summary);
+        }
       } else {
-        setSummary(summaryResult.summary);
+        setSummary("No text content available to generate a summary.");
       }
     });
   }, [toast]);
