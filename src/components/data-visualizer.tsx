@@ -2,11 +2,12 @@
 "use client";
 
 import type { DataPoint } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
+import { FormattedDate } from './formatted-date';
 
 export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
   const apiKey = "AIzaSyCx-5VQB6xHfLbZsxeKDDEr71Vvr2k659A";
@@ -40,6 +41,7 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
   const sampleRate = data.length > 0 ? data[0].sampleRate : null;
   const minFreq = data.length > 0 ? data[0].minTriggerFreq : null;
   const maxFreq = data.length > 0 ? data[0].maxTriggerFreq : null;
+  const recordingDate = data.length > 0 ? new Date(data[0].timestamp) : null;
 
 
   return (
@@ -49,6 +51,11 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Satellite /> Location Data</CardTitle>
+            {recordingDate && (
+                <CardDescription>
+                    Recorded on <FormattedDate date={recordingDate} />
+                </CardDescription>
+            )}
           </CardHeader>
           <CardContent>
             {!apiKey && (
