@@ -42,8 +42,8 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 }
 
 /**
- * Searches for a GUANO metadata chunk within a WAV file buffer.
- * This function parses the RIFF chunk structure to reliably find the metadata.
+ * Searches for a GUANO metadata chunk within a WAV file buffer by parsing the RIFF chunk structure.
+ * This is a more reliable method than a simple string search.
  * @param buffer The WAV file content as a Buffer.
  * @returns The GUANO metadata string if found, otherwise null.
  */
@@ -55,27 +55,29 @@ function findGuanoMetadata(buffer: Buffer): string | null {
       return null;
     }
 
-    let offset = 12; // Start after the RIFF header
+    let offset = 12; // Start scanning after the main RIFF header
 
-    // Loop through all chunks
-    while (offset < buffer.length) {
+    while (offset < buffer.length - 8) { // -8 to ensure we can read a full chunk header
       const chunkId = buffer.toString('ascii', offset, offset + 4);
       const chunkSize = buffer.readUInt32LE(offset + 4);
       
-      offset += 8; // Move pointer past chunk header
+      offset += 8; // Move pointer to the start of the chunk data
 
       if (chunkId.trim() === 'GUANO') {
-        // Found the GUANO chunk. The actual metadata might be null-terminated.
+        if (offset + chunkSize > buffer.length) {
+          console.error("GUANO chunk size is larger than the remaining file.");
+          return null;
+        }
         const guanoData = buffer.subarray(offset, offset + chunkSize);
-        // Find the first null character, as the chunk can be padded.
+        // The metadata is often null-terminated. Find the first null character.
         const nullCharIndex = guanoData.indexOf(0);
         const end = nullCharIndex !== -1 ? nullCharIndex : guanoData.length;
         return guanoData.subarray(0, end).toString('utf-8').trim();
       }
 
-      // Move to the next chunk. Chunk size must be even.
+      // Move to the next chunk. Chunk size must be even for RIFF format.
       const nextOffset = offset + chunkSize;
-      offset = nextOffset % 2 === 0 ? nextOffset : nextOffset + 1;
+      offset = nextOffset % 2 === 0 ? nextOffset : nextOffset + 1; // Align to word boundary
     }
 
     return null; // GUANO chunk not found
@@ -106,34 +108,16 @@ export async function getFileContentAction(
 
     if (['.wav', '.mp3', 'ogg'].includes(extension)) {
         isBinary = true;
-        // For audio playback, we need the entire file content as base64
-        content = fileBuffer.toString('base64');
+        content = `data:audio/wav;base64,${fileBuffer.toString('base64')}`;
         rawMetadata = findGuanoMetadata(fileBuffer);
         
         if (rawMetadata) {
-            try {
-                const result = await extractData({ fileContent: rawMetadata });
-                if (result.data && result.data.length > 0) {
-                  extractedData = result.data;
-                }
-            } catch (e) {
-                console.error("Could not extract metadata from audio file:", e);
-                // Fail gracefully, extractedData will remain null
-            }
+            // No AI parsing for now, just show the raw metadata.
         }
 
     } else {
         content = fileBuffer.toString("utf-8");
-        // For non-audio files, we can also try to extract data
-        try {
-            const result = await extractData({ fileContent: content });
-            if (result.data && result.data.length > 0) {
-                extractedData = result.data;
-                rawMetadata = content; // The whole file is the metadata
-            }
-        } catch (e) {
-            console.error("Could not extract metadata from text file:", e);
-        }
+        rawMetadata = content; // The whole file is the metadata
     }
 
     return { content, extension, name: sanitizedFilename, isBinary, extractedData, rawMetadata };

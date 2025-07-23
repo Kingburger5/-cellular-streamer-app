@@ -3,44 +3,48 @@
 
 import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { DataVisualizer } from "./data-visualizer";
 import { ScrollArea } from "./ui/scroll-area";
-import { WaveFileViewer } from "./wave-file-viewer";
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
   const isAudio = ['.wav', '.mp3', 'ogg'].includes(fileContent.extension);
 
   if (isAudio) {
-    return <WaveFileViewer fileContent={fileContent} />;
-  }
-  
-  // Fallback for non-audio text-based files like JSON, CSV, TXT
-  // which might also contain parsable data.
-  const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
-  if (hasVisualization) {
-    return (
+     return (
         <ScrollArea className="h-full">
             <div className="space-y-4 p-1">
-                <DataVisualizer data={fileContent.extractedData} />
-                 <Card>
+                <Card>
                     <CardHeader>
-                        <CardTitle>Raw File Content</CardTitle>
+                        <CardTitle>Audio File</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <audio controls src={fileContent.content} className="w-full">
+                            Your browser does not support the audio element.
+                        </audio>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Extracted Raw Metadata</CardTitle>
                         <CardDescription>
-                            The raw text content from the file used for visualization.
+                            The raw text block found in the binary file.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <pre className="text-xs bg-muted p-4 rounded-lg overflow-x-auto">
-                            <code>{fileContent.rawMetadata}</code>
+                            <code>
+                                {fileContent.rawMetadata 
+                                    ? fileContent.rawMetadata 
+                                    : "No parsable GUANO metadata was found in this file."}
+                            </code>
                         </pre>
                     </CardContent>
                 </Card>
             </div>
         </ScrollArea>
-    )
+     )
   }
   
-  // Fallback for files with no visualizable data
+  // Fallback for non-audio text-based files like JSON, CSV, TXT
   return (
      <Card className="h-full">
         <CardHeader>
