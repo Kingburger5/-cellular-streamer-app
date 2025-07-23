@@ -1,319 +1,306 @@
-// Define the serial connections for the modem
-#define MODEM_RX 16
-#define MODEM_TX 17
-#define MODEM_BAUD 115200
 
-// Define the SD card CS pin
-#define SD_CS_PIN 5
+#include <SPI.h>
+#include <SD.h>
+#include <FS.h>
 
-// Your GPRS credentials
-const char apn[]      = "internet"; // APN for One NZ. Change if you use a different provider.
-const char gprsUser[] = "";      // GPRS User, usually blank
-const char gprsPass[] = "";      // GPRS Password, usually blank
+#define TINY_GSM_MODEM_SIM7600
+#define TINY_GSM_USE_GPRS true
+
+#include <TinyGsmClient.h>
+#include <HardwareSerial.h>
+
+// Your board hardware definitions
+const int SD_CS_PIN = 5;
+
+// Your modem hardware definitions
+const int MODEM_TX = 16;
+const int MODEM_RX = 17;
+const int MODEM_BAUD = 115200;
+
+// Your network settings
+const char apn[] = "internet"; // APN for One NZ
+const char gprsUser[] = "";
+const char gprsPass[] = "";
 
 // Server details
 const char server[] = "cellular-data-streamer.web.app";
 const int port = 443;
-const char* resource = "/api/upload";
+const char resource[] = "/api/upload";
 
-// Libraries
-#include <SD.h>
-#include <SPI.h>
-#include <HardwareSerial.h>
+// File upload settings
+const int CHUNK_BUFFER_SIZE = 4096;
 
-#define TINY_GSM_MODEM_SIM7600
-#include <TinyGsmClient.h>
-
-// Globals
 HardwareSerial modemSerial(1);
 TinyGsm modem(modemSerial);
 
-// Function Prototypes
-void listDir(fs::FS &fs, const char * dirname, uint8_t levels);
-void sendFile(const char* filePath);
-bool sendChunk(File& file, const char* filename, size_t offset, size_t totalSize);
-bool openHttpsSession();
-void closeHttpsSession();
-bool configureSSL();
-bool waitForModemReady();
-bool waitForNetwork();
-void sendATCommand(const char* cmd, unsigned long timeout, const char* expected_response);
-bool sendATCommandCheck(const char* cmd, unsigned long timeout = 5000, const char* expected1 = "OK", const char* expected2 = "");
+// --- UTILITY FUNCTIONS ---
 
-
-void setup() {
-  Serial.begin(115200);
-  while (!Serial);
-
-  Serial.println("? Booting...");
-
-  SPI.begin();
-  if (!SD.begin(SD_CS_PIN)) {
-    Serial.println("? SD Card Mount Failed");
-    return;
+// Helper function to send AT command and print to Serial
+void sendATCommand(const char* cmd, bool debug = true) {
+  if (debug) {
+    Serial.print("[AT SEND] ");
+    Serial.println(cmd);
   }
-  uint8_t cardType = SD.cardType();
-  if (cardType == CARD_NONE) {
-    Serial.println("? No SD card attached");
-    return;
-  }
-  Serial.println("? SD card ready.");
-
-  Serial.println("Initializing modem...");
-  modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_TX, MODEM_RX);
-  
-  if (!modem.restart()) {
-    Serial.println("? Modem restart failed.");
-    return;
-  }
-  Serial.println("? Modem restarted.");
-  
-  Serial.println("--- Modem Status ---");
-  Serial.println("Modem Info: " + modem.getModemInfo());
-  Serial.println("Signal Quality: " + String(modem.getSignalQuality()));
-  Serial.println("SIM Status: " + String(modem.getSimStatus()));
-  Serial.println("CCID: " + modem.getSimCCID());
-  Serial.println("Operator: " + modem.getOperator());
-  Serial.println("--------------------");
-
-  if (!waitForModemReady()) {
-    Serial.println("? Modem not ready. Halting.");
-    while(true);
-  }
-  Serial.println("? Modem is ready.");
-
-  if (!waitForNetwork()) {
-      Serial.println("? Network registration failed. Halting.");
-      while(true);
-  }
-  Serial.println("? Registered on network.");
-
-  Serial.println("? Connecting to network...");
-  if (!modem.gprsConnect(apn, gprsUser, gprsPass)) {
-      Serial.println("? GPRS connection failed.");
-      return;
-  }
-  Serial.println("? GPRS connected.");
-  Serial.println("Local IP: " + modem.getLocalIP());
-
-  if (!configureSSL()) {
-    Serial.println("? Failed to configure SSL context.");
-    return;
-  }
-  Serial.println("? SSL Context configured.");
-
-  // List all files on the SD card
-  listDir(SD, "/", 0);
-  
-  // Pick a file to send. Replace with your logic to select a file.
-  const char* fileToSend = "/sigma2.wav"; 
-  
-  File file = SD.open(fileToSend);
-  if (file) {
-    sendFile(fileToSend);
-    file.close();
-  } else {
-    Serial.println("? Failed to open file for sending.");
-  }
+  modemSerial.println(cmd);
 }
 
-void loop() {
-  // Keep the main loop clean. The setup handles the one-time upload.
-  delay(10000);
-}
-
-
-// Function to send a single data chunk
-bool sendChunk(File& file, const char* filename, size_t offset, size_t totalSize) {
-    uint8_t chunkBuffer[4096];
-    size_t chunkSize = file.read(chunkBuffer, sizeof(chunkBuffer));
-
-    if (chunkSize == 0) {
-        return false; // No more data to read
-    }
-
-    Serial.printf("  Attempting to send chunk at offset %u, size %u...\n", offset, chunkSize);
-
-    // Construct headers
-    char headers[256];
-    snprintf(headers, sizeof(headers),
-             "x-filename: %s\r\nx-chunk-offset: %u\r\nx-chunk-size: %u\r\nx-total-size: %u\r\nContent-Type: application/octet-stream",
-             filename, offset, chunkSize, totalSize);
-    
-    char atCmd[512];
-    snprintf(atCmd, sizeof(atCmd), "AT+CHTTPSPOST=\"%s\",%d,%d,%d", resource, strlen(headers), chunkSize, 15000);
-
-    // Send the POST command and wait for the '>' prompt
-    modem.sendAT(atCmd);
-    if (!modem.waitResponse(5000, ">")) {
-        Serial.println("? Modem did not respond to POST command. Aborting.");
-        return false;
-    }
-
-    // Send headers
-    modemSerial.println(headers);
-    modemSerial.println(); // Blank line to end headers
-
-    // Send binary chunk data
-    modemSerial.write(chunkBuffer, chunkSize);
-    modemSerial.flush();
-
-    // Wait for the server response (e.g., "+CHTTPS: POST,200,...")
-    String response = "";
-    if (modem.waitResponse(15000, &response) != 1) {
-        Serial.println("? No response from server after sending chunk.");
-        return false;
-    }
-    
-    Serial.println("[SERVER RSP] " + response);
-    if (response.indexOf("+CHTTPS: POST,200") != -1 || response.indexOf("+CHTTPS: POST,201") != -1) {
-        Serial.println("  ...chunk sent successfully.");
-        return true;
-    } else {
-        Serial.println("  ...server returned an error.");
-        return false;
-    }
-}
-
-
-// Main function to manage sending a file in chunks
-void sendFile(const char* filePath) {
-    File file = SD.open(filePath, FILE_READ);
-    if (!file) {
-        Serial.println("? Failed to open file for sending.");
-        return;
-    }
-
-    size_t fileSize = file.size();
-    const char* filename = file.name();
-    Serial.printf("? Preparing to upload %s (%u bytes)\n", filename, fileSize);
-
-    if (!openHttpsSession()) {
-        Serial.println("? Failed to open HTTPS session.");
-        file.close();
-        return;
-    }
-
-    size_t offset = 0;
-    while (offset < fileSize) {
-        bool success = sendChunk(file, filename, offset, fileSize);
-        if (success) {
-            offset = file.position();
-        } else {
-            Serial.printf("? Failed to upload chunk at offset %u. Aborting.\n", offset);
-            break; // Exit loop on first failure
+// Helper to wait for a specific response
+bool waitForResponse(unsigned long timeout, const char* expected) {
+  unsigned long start = millis();
+  String response;
+  while (millis() - start < timeout) {
+    if (modemSerial.available()) {
+      char c = modemSerial.read();
+      response += c;
+      if (response.endsWith(expected)) {
+        if (String(expected) == "> ") {
+           Serial.println("[DEBUG] Got > prompt.");
         }
-    }
-
-    closeHttpsSession();
-
-    if (offset >= fileSize) {
-        Serial.println("? File upload completed successfully!");
-    } else {
-        Serial.println("? File upload failed.");
-    }
-
-    file.close();
-}
-
-
-bool openHttpsSession() {
-    if (!sendATCommandCheck("AT+CHTTPSSTART")) {
-        return false;
-    }
-    if (!sendATCommandCheck("AT+CHTTPSOPSE=\"" + String(server) + "\"," + String(port), 15000, "+CHTTPSOPSE: 0")) {
-        Serial.println("? Failed to open HTTPS session with server.");
-        closeHttpsSession(); // Attempt cleanup
-        return false;
-    }
-    return true;
-}
-
-void closeHttpsSession() {
-    sendATCommandCheck("AT+CHTTPSCLSE");
-    sendATCommandCheck("AT+CHTTPSSTOP");
-}
-
-bool configureSSL() {
-  Serial.println("? Configuring SSL...");
-  if (!sendATCommandCheck("AT+CSSLCFG=\"sslversion\",1,3")) return false;
-  if (!sendATCommandCheck("AT+CSSLCFG=\"authmode\",1,0")) return false;
-  return true;
-}
-
-// Utility to send an AT command and wait for a specific response
-bool sendATCommandCheck(const char* cmd, unsigned long timeout, const char* expected1, const char* expected2) {
-    Serial.println("[AT SEND] " + String(cmd));
-    modem.sendAT(cmd);
-    String response = "";
-    if (modem.waitResponse(timeout, &response) != 1) {
-        Serial.println("[DEBUG] Timeout waiting for: " + String(expected1));
-        Serial.println("[DEBUG] Received: " + response);
-        return false;
-    }
-    response.trim();
-    if (response.indexOf(expected1) == -1 && (strlen(expected2) == 0 || response.indexOf(expected2) == -1)) {
-        Serial.println("[DEBUG] Unexpected response: " + response);
-        return false;
-    }
-    return true;
-}
-
-// Blocks until the modem is fully booted and the SIM is ready.
-bool waitForModemReady() {
-  for (int i = 0; i < 20; i++) {
-    if (modem.testAT()) {
-      SimStatus simStatus = modem.getSimStatus();
-      if (simStatus == SIM_READY) {
         return true;
       }
+    }
+  }
+  Serial.print("[DEBUG] Timeout waiting for: ");
+  Serial.println(expected);
+  Serial.print("[DEBUG] Received: ");
+  Serial.println(response);
+  return false;
+}
+
+// --- CORE FUNCTIONS ---
+
+bool waitForModemReady() {
+  Serial.println("Waiting for modem to be ready...");
+  for (int i = 0; i < 30; i++) { // Wait up to 15 seconds
+    if (modem.testAT(1000)) {
+       SimStatus simStatus = modem.getSimStatus();
+       if (simStatus == SIM_READY) {
+          Serial.println("✅ Modem and SIM are ready.");
+          return true;
+       }
+       Serial.print("SIM Status: ");
+       Serial.println(simStatus);
     }
     delay(500);
   }
   return false;
 }
 
-// Blocks until the modem is registered on the cellular network.
 bool waitForNetwork() {
-  Serial.println("? Waiting for network registration...");
-  for (int i = 0; i < 30; i++) { // Wait for up to 30 seconds
-    int registrationStatus = modem.getRegistrationStatus();
-    // 1: Registered, home network. 5: Registered, roaming.
-    if (registrationStatus == 1 || registrationStatus == 5) {
-      return true;
+    Serial.println("Waiting for network registration...");
+    for (int i = 0; i < 30; i++) { // Wait up to 30 seconds
+        int registrationStatus = modem.getRegistrationStatus();
+        Serial.print("Network registration status: ");
+        Serial.println(registrationStatus);
+        if (registrationStatus == 1 || registrationStatus == 5) { // Registered on home or roaming
+            Serial.println("✅ Registered on network.");
+            return true;
+        }
+        delay(1000);
     }
-    delay(1000);
+    return false;
+}
+
+bool configureSSL() {
+  Serial.println("🔧 Configuring SSL...");
+  String cmd;
+
+  // Set SSL version to allow TLS 1.2
+  cmd = "AT+CSSLCFG=\"sslversion\",1,3";
+  sendATCommand(cmd.c_str());
+  if (!modem.waitResponse(3000, "OK")) {
+    Serial.println("❌ Failed to set SSL version.");
+    return false;
   }
-  return false;
+
+  // Set authentication mode to not require server certificate validation (for development)
+  cmd = "AT+CSSLCFG=\"authmode\",1,0";
+  sendATCommand(cmd.c_str());
+  if (!modem.waitResponse(3000, "OK")) {
+    Serial.println("❌ Failed to set SSL auth mode.");
+    return false;
+  }
+  
+  // Enable HTTPS mode
+  cmd = "AT+HTTPSSL=1";
+  sendATCommand(cmd.c_str());
+  if (!modem.waitResponse(3000, "OK")) {
+    Serial.println("❌ Failed to enable HTTPS.");
+    return false;
+  }
+
+  Serial.println("✅ SSL configured successfully.");
+  return true;
+}
+
+bool openHttpsSession() {
+  sendATCommand("AT+CHTTPSSTART");
+  if (!waitForResponse(10000, "+CHTTPSSTART: 0")) {
+      waitForResponse(10000, "OK"); // Clear buffer
+      Serial.println("❌ Failed to start HTTPS service.");
+      return false;
+  }
+  waitForResponse(1000, "OK");
+  
+  String cmd = "AT+CHTTPSOPSE=\"" + String(server) + "\"," + String(port);
+  sendATCommand(cmd.c_str());
+
+  if (!waitForResponse(20000, "+CHTTPSOPSE: 0")) {
+    Serial.println("❌ Failed to open HTTPS session with server.");
+    // Close the session on failure
+    sendATCommand("AT+CHTTPSCLSE");
+    waitForResponse(1000, "OK");
+    sendATCommand("AT+CHTTPSSTOP");
+    waitForResponse(1000, "OK");
+    return false;
+  }
+  waitForResponse(1000, "OK");
+  Serial.println("✅ HTTPS session opened.");
+  return true;
+}
+
+bool closeHttpsSession() {
+    sendATCommand("AT+CHTTPSCLSE");
+    if(!waitForResponse(1000, "OK")) {
+        Serial.println("Warning: Did not get OK on CHTTPCLSE.");
+    }
+    sendATCommand("AT+CHTTPSSTOP");
+    if(!waitForResponse(1000, "OK")) {
+        Serial.println("Warning: Did not get OK on CHTTPSTOP.");
+    }
+    Serial.println("✅ HTTPS session closed.");
+    return true;
+}
+
+bool sendChunk(File& file, const char* filename, size_t totalSize, size_t chunkOffset) {
+    uint8_t chunkBuffer[CHUNK_BUFFER_SIZE];
+    size_t chunkSize = file.read(chunkBuffer, sizeof(chunkBuffer));
+    if (chunkSize == 0) return false; // No more data to read
+
+    String headers = "x-filename: " + String(filename) + "\r\n";
+    headers += "x-chunk-offset: " + String(chunkOffset) + "\r\n";
+    headers += "x-chunk-size: " + String(chunkSize) + "\r\n";
+    headers += "x-total-size: " + String(totalSize) + "\r\n";
+    headers += "Content-Type: application/octet-stream\r\n";
+
+    int headerLength = headers.length();
+    
+    // Command: AT+CHTTPSPOST=<uri>,<header_len>,<content_len>,<timeout_ms>
+    String postCmd = "AT+CHTTPSPOST=\"" + String(resource) + "\"," + String(headerLength) + "," + String(chunkSize) + ",10000";
+    sendATCommand(postCmd.c_str());
+
+    if (!waitForResponse(2000, "> ")) {
+        Serial.println("❌ Modem did not respond to POST command. Aborting.");
+        return false;
+    }
+
+    // Send headers then content
+    modemSerial.print(headers);
+    modemSerial.write(chunkBuffer, chunkSize);
+    modemSerial.flush();
+
+    // Check for success response +CHTTPS: POST,200
+    if (!waitForResponse(15000, "+CHTTPS: POST,200")) {
+        Serial.println("❌ Failed to get 200 OK from server for chunk.");
+        return false;
+    }
+    
+    waitForResponse(1000, "OK"); // Consume final OK
+    
+    float progress = (float)(chunkOffset + chunkSize) / totalSize * 100;
+    Serial.printf("  ...chunk sent. Progress: %.2f%%\n", progress);
+
+    return true;
 }
 
 
-// Lists files and directories on the SD card
-void listDir(fs::FS &fs, const char * dirname, uint8_t levels) {
-    Serial.printf("Listing directory: %s\n", dirname);
-    File root = fs.open(dirname);
-    if (!root) {
-        Serial.println("Failed to open directory");
+void uploadFile(const char* filename) {
+    File file = SD.open(filename, FILE_READ);
+    if (!file) {
+        Serial.println("❌ Failed to open file for reading.");
         return;
     }
-    if (!root.isDirectory()) {
-        Serial.println("Not a directory");
+
+    size_t fileSize = file.size();
+    Serial.printf("📤 Preparing to upload %s (%d bytes)\n", filename, fileSize);
+
+    if (!openHttpsSession()) {
+        file.close();
         return;
     }
-    File file = root.openNextFile();
-    while (file) {
-        if (file.isDirectory()) {
-            Serial.print("  DIR : ");
-            Serial.println(file.name());
-            if (levels) {
-                listDir(fs, file.name(), levels - 1);
-            }
-        } else {
-            Serial.print("  FILE: ");
-            Serial.print(file.name());
-            Serial.print("  SIZE: ");
-            Serial.println(file.size());
+
+    size_t offset = 0;
+    bool success = true;
+    while (offset < fileSize) {
+        if (!sendChunk(file, filename, fileSize, offset)) {
+            success = false;
+            break;
         }
-        file = file.openNextFile();
+        offset = file.position();
     }
+
+    if (success) {
+        Serial.println("✅ File upload completed successfully.");
+    } else {
+        Serial.println("❌ File upload failed.");
+    }
+
+    file.close();
+    closeHttpsSession();
+}
+
+// --- ARDUINO SETUP & LOOP ---
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial);
+
+  Serial.println("🔌 Booting...");
+
+  if (!SD.begin(SD_CS_PIN)) {
+    Serial.println("❌ SD card mount failed. Halting.");
+    while (1);
+  }
+  Serial.println("✅ SD card ready.");
+
+  Serial.println("Initializing modem...");
+  modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
+
+  if (!waitForModemReady()) {
+      Serial.println("❌ Modem not responding. Halting.");
+      while(1);
+  }
+  
+  Serial.println("--- Modem Status ---");
+  modem.sendAT("+CIMI");
+  String imei = "";
+  modem.waitResponse(1000, imei);
+  Serial.println("IMEI: " + imei);
+  Serial.println("Signal Quality: " + String(modem.getSignalQuality()));
+  Serial.println("SIM Status: " + String(modem.getSimStatus()));
+  Serial.println("CCID: " + modem.getSimCCID());
+  Serial.println("Operator: " + modem.getOperator());
+  Serial.println("--------------------");
+
+  Serial.println("📡 Connecting to network...");
+  if (!waitForNetwork()) {
+      Serial.println("❌ Failed to register on network. Halting.");
+      while(1);
+  }
+
+  if (!modem.gprsConnect(apn, gprsUser, gprsPass)) {
+      Serial.println("❌ GPRS connection failed.");
+      while(1);
+  }
+  Serial.println("✅ GPRS connected.");
+
+  String localIP = modem.getLocalIP();
+  Serial.println("Local IP: " + localIP);
+  
+  uploadFile("/sigma2.wav");
+}
+
+void loop() {
+  // All logic is in setup for this one-shot example
+  delay(10000);
 }
