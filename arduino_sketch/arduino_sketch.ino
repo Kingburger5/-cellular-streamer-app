@@ -1,4 +1,3 @@
-
 #include <SPI.h>
 #include <SD.h>
 #include <HardwareSerial.h>
