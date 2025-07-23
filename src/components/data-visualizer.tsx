@@ -37,24 +37,21 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
             <CardTitle className="flex items-center gap-2"><Satellite /> Location Data</CardTitle>
           </CardHeader>
           <CardContent>
-             <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
-                <div className="w-full h-px bg-border absolute top-1/2 left-0"></div>
-                <div className="h-full w-px bg-border absolute left-1/2 top-0"></div>
-                {latestLocation && latestLocation.latitude && latestLocation.longitude ? (
-                    <>
-                        <div className="text-center">
-                            <p className="font-bold text-lg">{latestLocation.latitude.toFixed(4)}, {latestLocation.longitude.toFixed(4)}</p>
-                            <p className="text-sm text-muted-foreground">Latest Reported Position</p>
-                        </div>
-                        <Send className="text-primary w-8 h-8 absolute" style={{ 
-                            top: `calc(50% - ${latestLocation.latitude % 1 * 50}px - 16px)`, 
-                            left: `calc(50% + ${latestLocation.longitude % 1 * 50}px - 16px)`
-                        }}/>
-                    </>
-                ) : (
-                    <p>No location data available.</p>
-                )}
-            </div>
+            {latestLocation && latestLocation.latitude && latestLocation.longitude ? (
+              <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
+                <iframe
+                  className="w-full h-full border-0 rounded-lg"
+                  loading="lazy"
+                  allowFullScreen
+                  src={`https://maps.google.com/maps?q=${latestLocation.latitude},${latestLocation.longitude}&hl=es;z=14&amp;output=embed`}
+                >
+                </iframe>
+              </div>
+            ) : (
+              <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
+                <p>No location data available.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
         
@@ -89,7 +86,7 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
                 <YAxis unit="°C" />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="temperature" stroke="var(--color-chart-1)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="temperature" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -108,7 +105,7 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="flybys" fill="var(--color-chart-2)" />
+                  <Bar dataKey="flybys" fill="hsl(var(--chart-2))" />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>

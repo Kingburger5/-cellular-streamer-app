@@ -5,9 +5,7 @@ import type { FileContent } from "@/lib/types";
 import { WaveFileViewer } from "./wave-file-viewer";
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
-  const isAudio = ['.wav', '.mp3', 'ogg'].includes(fileContent.extension);
-
-  if (isAudio) {
+  if (fileContent.isBinary) {
      return <WaveFileViewer fileContent={fileContent} />;
   }
   
