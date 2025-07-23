@@ -2,57 +2,21 @@
 "use client";
 
 import type { FileContent } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ScrollArea } from "./ui/scroll-area";
+import { WaveFileViewer } from "./wave-file-viewer";
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
   const isAudio = ['.wav', '.mp3', 'ogg'].includes(fileContent.extension);
 
   if (isAudio) {
-     return (
-        <ScrollArea className="h-full">
-            <div className="space-y-4 p-1">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Audio File</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <audio controls src={fileContent.content} className="w-full">
-                            Your browser does not support the audio element.
-                        </audio>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Extracted Raw Metadata</CardTitle>
-                        <CardDescription>
-                            The raw text block found in the binary file.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <pre className="text-xs bg-muted p-4 rounded-lg overflow-x-auto">
-                            <code>
-                                {fileContent.rawMetadata 
-                                    ? fileContent.rawMetadata 
-                                    : "No parsable GUANO metadata was found in this file."}
-                            </code>
-                        </pre>
-                    </CardContent>
-                </Card>
-            </div>
-        </ScrollArea>
-     )
+     return <WaveFileViewer fileContent={fileContent} />;
   }
   
   // Fallback for non-audio text-based files like JSON, CSV, TXT
+  // This can be expanded to include visualizers for these types too.
   return (
-     <Card className="h-full">
-        <CardHeader>
-            <CardTitle>Raw File Content</CardTitle>
-        </CardHeader>
-        <CardContent>
-             <pre className="text-sm whitespace-pre-wrap">{fileContent.content}</pre>
-        </CardContent>
-     </Card>
+    <div className="p-4 bg-muted h-full rounded-lg">
+      <h3 className="font-semibold text-lg mb-2">Raw File Content</h3>
+      <pre className="text-sm whitespace-pre-wrap">{fileContent.content}</pre>
+    </div>
   );
 }

@@ -42,49 +42,46 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 }
 
 /**
- * Searches for a GUANO metadata chunk within a WAV file buffer by parsing the RIFF chunk structure.
- * This is a more reliable method than a simple string search.
- * @param buffer The WAV file content as a Buffer.
- * @returns The GUANO metadata string if found, otherwise null.
+ * Searches for any readable text runs within a binary buffer.
+ * A more robust way to find metadata when chunk parsing fails.
+ * @param buffer The file content as a Buffer.
+ * @returns The longest readable string found, which should be the GUANO metadata.
  */
-function findGuanoMetadata(buffer: Buffer): string | null {
-  try {
-    // Check for 'RIFF' and 'WAVE' headers
-    if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
-      console.error("Not a valid RIFF/WAVE file.");
-      return null;
-    }
+function findReadableStrings(buffer: Buffer): string | null {
+    let longestString = "";
+    let currentString = "";
+    // A character is considered printable if its ASCII code is between 32 (space) and 126 (~).
+    // We also include newline (10) and carriage return (13) and pipe (124).
+    const isPrintable = (char: number) => (char >= 32 && char <= 126) || char === 10 || char === 13;
 
-    let offset = 12; // Start scanning after the main RIFF header
-
-    while (offset < buffer.length - 8) { // -8 to ensure we can read a full chunk header
-      const chunkId = buffer.toString('ascii', offset, offset + 4);
-      const chunkSize = buffer.readUInt32LE(offset + 4);
-      
-      offset += 8; // Move pointer to the start of the chunk data
-
-      if (chunkId.trim() === 'GUANO') {
-        if (offset + chunkSize > buffer.length) {
-          console.error("GUANO chunk size is larger than the remaining file.");
-          return null;
+    for (let i = 0; i < buffer.length; i++) {
+        const charCode = buffer[i];
+        if (isPrintable(charCode)) {
+            currentString += String.fromCharCode(charCode);
+        } else {
+            if (currentString.includes("GUANO")) {
+                 if (currentString.length > longestString.length) {
+                    longestString = currentString;
+                }
+            }
+            currentString = "";
         }
-        const guanoData = buffer.subarray(offset, offset + chunkSize);
-        // The metadata is often null-terminated. Find the first null character.
-        const nullCharIndex = guanoData.indexOf(0);
-        const end = nullCharIndex !== -1 ? nullCharIndex : guanoData.length;
-        return guanoData.subarray(0, end).toString('utf-8').trim();
-      }
-
-      // Move to the next chunk. Chunk size must be even for RIFF format.
-      const nextOffset = offset + chunkSize;
-      offset = nextOffset % 2 === 0 ? nextOffset : nextOffset + 1; // Align to word boundary
     }
-
-    return null; // GUANO chunk not found
-  } catch (error) {
-    console.error("Error parsing WAV file for GUANO metadata:", error);
-    return null;
-  }
+    // Check one last time at the end of the buffer
+    if (currentString.includes("GUANO")) {
+        if (currentString.length > longestString.length) {
+            longestString = currentString;
+        }
+    }
+    
+    // Clean up the output string if it contains the GUANO keyword
+    if (longestString.includes("GUANO")) {
+        const guanoIndex = longestString.indexOf("GUANO");
+        // Trim anything before the GUANO string
+        return longestString.substring(guanoIndex).trim();
+    }
+    
+    return longestString || null;
 }
 
 
@@ -109,15 +106,22 @@ export async function getFileContentAction(
     if (['.wav', '.mp3', 'ogg'].includes(extension)) {
         isBinary = true;
         content = `data:audio/wav;base64,${fileBuffer.toString('base64')}`;
-        rawMetadata = findGuanoMetadata(fileBuffer);
+        rawMetadata = findReadableStrings(fileBuffer);
         
         if (rawMetadata) {
-            // No AI parsing for now, just show the raw metadata.
+             const aiResult = await extractData({ fileContent: rawMetadata });
+             if (aiResult && aiResult.data.length > 0) {
+                 extractedData = aiResult.data;
+             }
         }
 
     } else {
         content = fileBuffer.toString("utf-8");
         rawMetadata = content; // The whole file is the metadata
+        const aiResult = await extractData({ fileContent: rawMetadata });
+        if (aiResult && aiResult.data.length > 0) {
+            extractedData = aiResult.data;
+        }
     }
 
     return { content, extension, name: sanitizedFilename, isBinary, extractedData, rawMetadata };
