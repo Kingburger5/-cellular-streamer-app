@@ -50,19 +50,20 @@ function findGuanoMetadata(buffer: Buffer): string | null {
     }
     
     // Search for the end of the metadata block. GUANO metadata is a single line terminated by a newline or null character.
-    const searchEnd = Math.min(headerIndex + 2048, buffer.length); // Limit search to 2KB
+    const searchEnd = Math.min(headerIndex + 4096, buffer.length); // Limit search to 4KB, which is generous
     let metadataEnd = -1;
 
     for (let i = headerIndex; i < searchEnd; i++) {
-        // Look for newline or null terminator
-        if (buffer[i] === 0x0A || buffer[i] === 0x00) {
+        // Look for newline (0x0A), carriage return (0x0D), or null terminator (0x00)
+        if (buffer[i] === 0x0A || buffer[i] === 0x0D || buffer[i] === 0x00) {
             metadataEnd = i;
             break;
         }
     }
 
     if (metadataEnd === -1) {
-       metadataEnd = searchEnd;
+       // If no terminator is found, we can't safely determine the end.
+       return null;
     }
 
     // Extract the line containing the GUANO metadata.
@@ -95,20 +96,22 @@ export async function getFileContentAction(
     let rawMetadata: string | null = null;
 
     if (['.wav', '.mp3', '.ogg'].includes(extension)) {
-        content = "Binary audio file. Content not displayed.";
         isBinary = true;
+        rawMetadata = findGuanoMetadata(fileBuffer);
         
-        try {
-            const textContent = findGuanoMetadata(fileBuffer);
-            rawMetadata = textContent; // Save the raw metadata string
-            if (textContent) {
-                const result = await extractData({ fileContent: textContent });
+        if (rawMetadata) {
+            content = rawMetadata; // For now, just show the metadata as the main content
+            try {
+                const result = await extractData({ fileContent: rawMetadata });
                 if (result.data && result.data.length > 0) {
                   extractedData = result.data;
                 }
+            } catch (e) {
+                console.error("Could not extract metadata from audio file:", e);
+                // Fail gracefully, extractedData will remain null
             }
-        } catch (e) {
-            console.error("Could not extract metadata from audio file:", e);
+        } else {
+            content = "Binary audio file. No GUANO metadata found.";
         }
 
     } else {

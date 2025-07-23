@@ -11,26 +11,9 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
 
   return (
     <ScrollArea className="h-full">
+      <div className="space-y-4 p-1">
         {hasVisualization ? (
-           <div className="space-y-4 p-1">
-             <DataVisualizer data={fileContent.extractedData} />
-             
-             {fileContent.rawMetadata && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Extracted Metadata</CardTitle>
-                         <CardDescription>
-                            The raw text block used to generate the visualization above.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <pre className="text-xs bg-muted p-4 rounded-lg overflow-x-auto">
-                            <code>{fileContent.rawMetadata}</code>
-                        </pre>
-                    </CardContent>
-                </Card>
-             )}
-           </div>
+           <DataVisualizer data={fileContent.extractedData} />
         ) : (
              <Card>
                 <CardHeader>
@@ -41,6 +24,23 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
                 </CardContent>
              </Card>
         )}
+        
+        {fileContent.rawMetadata && fileContent.isBinary && (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Extracted Raw Metadata</CardTitle>
+                     <CardDescription>
+                        The raw text block found in the binary file.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <pre className="text-xs bg-muted p-4 rounded-lg overflow-x-auto">
+                        <code>{fileContent.rawMetadata}</code>
+                    </pre>
+                </CardContent>
+            </Card>
+         )}
+       </div>
     </ScrollArea>
   );
 }
