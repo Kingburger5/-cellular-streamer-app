@@ -4,11 +4,11 @@ import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning, AlertCircle } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning } from 'lucide-react';
 
 export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
 
-  if (data === null || data.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
         <FileWarning className="w-12 h-12 mb-4" />

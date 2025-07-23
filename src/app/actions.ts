@@ -42,29 +42,27 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 }
 
 function findGuanoMetadata(buffer: Buffer): string | null {
-    // GUANO metadata is a UTF-8 string that starts with "GUANO"
-    const guanoHeader = "GUANO";
+    // GUANO metadata is a UTF-8 string that starts with "GUANO" and is part of a chunk.
+    const guanoHeader = Buffer.from("GUANO");
     const headerIndex = buffer.indexOf(guanoHeader);
 
     if (headerIndex === -1) {
         return null;
     }
     
-    // Search for the end of the metadata block, which might be terminated by a null byte or the start of the 'data' chunk
-    const dataChunkHeader = "data";
-    const dataIndex = buffer.indexOf(dataChunkHeader, headerIndex);
-
-    const endOfMeta = dataIndex !== -1 ? dataIndex : buffer.length;
-
-    // Extract the potential metadata block and clean it up
-    let metadata = buffer.toString('utf-8', headerIndex, endOfMeta);
+    // The metadata is often in a 'junk' chunk before the 'data' chunk.
+    // Let's find the end of the metadata. It's often terminated by the start of the next RIFF chunk.
+    // A simple way is to read line by line until we no longer have valid text.
     
-    // Remove null characters and other non-printable characters that might follow the metadata
-    metadata = metadata.replace(/\0/g, '').trim();
+    const endOfSearch = headerIndex + 1024; // Search within a reasonable range after the header
+    let metadataBlock = buffer.toString('utf-8', headerIndex, endOfSearch);
 
-    // The metadata might be embedded within a 'junk' chunk, let's find the most relevant part
-    const lines = metadata.split(/(\r\n|\n|\r)/);
-    const guanoLine = lines.find(line => line.startsWith(guanoHeader));
+    // Clean up null characters that might terminate the string early
+    metadataBlock = metadataBlock.replace(/\0/g, '').trim();
+
+    // The GUANO block itself is often a single line. We find that line.
+    const lines = metadataBlock.split(/(\r\n|\n|\r)/);
+    const guanoLine = lines.find(line => line.startsWith("GUANO"));
 
     return guanoLine || null;
 }
@@ -91,24 +89,31 @@ export async function getFileContentAction(
         isBinary = true;
         
         try {
-            // Attempt to find and decode readable text from the buffer for metadata
             const textContent = findGuanoMetadata(fileBuffer);
             if (textContent) {
+                console.log("Found GUANO metadata:", textContent);
                 const result = await extractData({ fileContent: textContent });
                 if (result.data && result.data.length > 0) {
                   extractedData = result.data;
+                } else {
+                  console.log("AI failed to extract data from GUANO block.");
                 }
+            } else {
+               console.log("No GUANO metadata found in file.");
             }
         } catch (e) {
-            console.log("Could not extract metadata from audio file:", e);
+            console.error("Could not extract metadata from audio file:", e);
         }
 
     } else {
         content = fileBuffer.toString("utf-8");
-        // For non-audio files, we can also try to extract data if they are text-based.
-        const result = await extractData({ fileContent: content });
-        if (result.data && result.data.length > 0) {
-            extractedData = result.data;
+        try {
+            const result = await extractData({ fileContent: content });
+            if (result.data && result.data.length > 0) {
+                extractedData = result.data;
+            }
+        } catch (e) {
+            console.error("Could not extract metadata from text file:", e);
         }
     }
 
