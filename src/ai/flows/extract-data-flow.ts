@@ -37,19 +37,19 @@ const prompt = ai.definePrompt({
   name: 'extractDataPrompt',
   input: {schema: ExtractDataInputSchema},
   output: {schema: ExtractDataOutputSchema},
-  prompt: `You are an expert at extracting structured data from text. The provided text is metadata from a file, potentially in a specific format like GUANO.
+  prompt: `You are an expert at extracting structured data from text. The provided text is metadata from a file, in GUANO format.
 
-Your task is to parse this text and extract the relevant data points.
+Your task is to parse this text and extract the relevant data points into a single data point object.
 
 - The 'Loc Position' field contains both latitude and longitude, separated by a space. You must extract them into the separate 'latitude' and 'longitude' fields.
 - The temperature might be labeled as 'Temperature Int'.
 - If a field like 'flybys' is not present in the text, you should omit it from the output for that data point.
-- If no parsable data is found, return an empty array.
+- If no parsable data is found, return an empty array for the 'data' field.
 
 Here is an example of the input format:
-"GUANO|Version:1.0 ... Timestamp:2025-03-02 20:50:16+13:00 Loc Position:-37.00403 174.57577 Temperature Int:20.75"
+"GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song Meter Mini Bat|Serial:SMU06612|WA|Song Meter|Prefix:1|WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]|Length:4.208|Original Filename:1_20250302_205016.wav|Timestamp:2025-03-02 20:50:16+13:00|Loc Position:-37.00403 174.57577|Temperature Int:20.75|Samplerate:256000"
 
-From this example, you should extract:
+From this example, you must extract:
 - timestamp: "2025-03-02 20:50:16+13:00"
 - latitude: -37.00403
 - longitude: 174.57577
