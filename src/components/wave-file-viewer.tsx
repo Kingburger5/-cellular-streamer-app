@@ -12,7 +12,7 @@ export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
     const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
 
     return (
-        <Tabs defaultValue="visualize" className="h-full flex flex-col">
+        <Tabs defaultValue={hasVisualization ? "visualize" : "playback"} className="h-full flex flex-col">
             <TabsList>
                 <TabsTrigger value="visualize" disabled={!hasVisualization}>Visualize</TabsTrigger>
                 <TabsTrigger value="playback">Playback</TabsTrigger>
