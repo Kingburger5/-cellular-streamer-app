@@ -1,73 +1,20 @@
 "use client";
 
-import { useMemo } from 'react';
-import type { FileContent, DataPoint } from '@/lib/types';
+import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Satellite, Thermometer, Send, FileWarning, AlertCircle } from 'lucide-react';
 
-const parseData = (file: FileContent): DataPoint[] | null => {
-  try {
-    if (file.extractedData) {
-        return file.extractedData;
-    }
-    if (file.extension === '.json') {
-      const data = JSON.parse(file.content);
-      return Array.isArray(data) ? data : [];
-    }
-    if (file.extension === '.csv') {
-      const rows = file.content.split('\n').filter(Boolean);
-       if (rows.length < 2) return [];
-      const headers = rows[0].split(',').map(h => h.trim());
-      const body = rows.slice(1);
-      return body.map(row => {
-        const values = row.split(',');
-        const obj: any = {};
-        headers.forEach((header, i) => {
-          const value = values[i]?.trim();
-          const numValue = parseFloat(value);
-          obj[header] = isNaN(numValue) ? value : numValue;
-        });
-        return obj as DataPoint;
-      });
-    }
-  } catch (e) {
-    console.error("Failed to parse data:", e);
-    return null;
-  }
-  return null;
-};
+export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
 
-
-export function DataVisualizer({ data: propData, rawFileContent }: { data: DataPoint[] | null, rawFileContent?: FileContent | null }) {
-  const data = useMemo(() => {
-    // If data is passed directly, use it. This is for the WAV file case with extracted metadata.
-    if (propData) return propData;
-    // Otherwise, try to parse from the raw file content. This is for CSV/JSON.
-    if (rawFileContent) return parseData(rawFileContent);
-    return null;
-  }, [propData, rawFileContent]);
-
-
-  if (data === null) {
+  if (data === null || data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
         <FileWarning className="w-12 h-12 mb-4" />
         <h3 className="font-semibold">No Visualization Available</h3>
-        <p className="text-sm">This file type cannot be visualized as data, or parsing failed.</p>
-        <p className="text-xs mt-2">Try the 'Pretty' or 'Raw' tabs for other views.</p>
-      </div>
-    );
-  }
-  
-  if (data.length === 0) {
-      return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
-        <AlertCircle className="w-12 h-12 mb-4" />
-        <h3 className="font-semibold">No Data to Visualize</h3>
-         <p className="text-sm">Could not extract any data points from the file.</p>
-         <p className="text-xs mt-2">Ensure the file is valid JSON, CSV or a WAV with embedded GUANO metadata.</p>
+        <p className="text-sm">Could not extract any parsable data points from this file.</p>
+        <p className="text-xs mt-2">Ensure the file contains valid metadata (e.g., GUANO for WAV, or standard CSV/JSON).</p>
       </div>
     );
   }

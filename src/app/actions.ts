@@ -2,7 +2,6 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { summarizeFile } from "@/ai/flows/summarize-file";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent } from "@/lib/types";
 
@@ -57,15 +56,14 @@ export async function getFileContentAction(
     let content: string;
     let isBinary = false;
     let extractedData = null;
-    let textContentForSummary = "";
 
     if (['.wav', '.mp3', '.ogg'].includes(extension)) {
         content = fileBuffer.toString('base64');
         isBinary = true;
         
         try {
+            // Attempt to find and decode readable text from the buffer for metadata
             const textContent = fileBuffer.toString('utf-8');
-            textContentForSummary = textContent; // Use this for summary later
             const result = await extractData({ fileContent: textContent });
             if (result.data && result.data.length > 0) {
               extractedData = result.data;
@@ -76,29 +74,17 @@ export async function getFileContentAction(
 
     } else {
         content = fileBuffer.toString("utf-8");
-        textContentForSummary = content;
+        // For non-audio files, we can also try to extract data if they are text-based.
+        const result = await extractData({ fileContent: content });
+        if (result.data && result.data.length > 0) {
+            extractedData = result.data;
+        }
     }
 
-    return { content, extension, name: sanitizedFilename, isBinary, extractedData, textContentForSummary };
+    return { content, extension, name: sanitizedFilename, isBinary, extractedData };
   } catch (error) {
     console.error(`Error reading file ${filename}:`, error);
     return null;
-  }
-}
-
-export async function generateSummaryAction(input: {
-  filename: string;
-  fileContent: string;
-}): Promise<{ summary: string } | { error: string }> {
-  try {
-    const result = await summarizeFile({
-        filename: input.filename,
-        fileContent: input.fileContent,
-    });
-    return result;
-  } catch (error) {
-    console.error("Error generating summary:", error);
-    return { error: "Failed to generate summary." };
   }
 }
 

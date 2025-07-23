@@ -55,33 +55,44 @@ function TxtViewer({ content }: { content: string }) {
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
   const hasPrettyView = [".json", ".csv", ".txt"].includes(fileContent.extension);
-  const isDataVis = [".json", ".csv"].includes(fileContent.extension) || (fileContent.extension === '.wav' && !!fileContent.extractedData);
+  const hasVisualization = !!fileContent.extractedData && fileContent.extractedData.length > 0;
   const isAudio = fileContent.extension === ".wav";
-  const hasVisualization = isDataVis || isAudio;
+  
+  // Decide the default tab based on what's available
+  let defaultTab = "raw";
+  if (hasPrettyView) defaultTab = "pretty";
+  if (isAudio) defaultTab = "audio";
+  if (hasVisualization) defaultTab = "visualize";
 
-  const defaultTab = hasVisualization ? "visualize" : (hasPrettyView ? "pretty" : "raw");
 
   return (
     <Tabs defaultValue={defaultTab} className="flex flex-col h-full">
-      <TabsList className={`grid w-full ${hasVisualization && hasPrettyView ? "grid-cols-3" : hasVisualization || hasPrettyView ? "grid-cols-2" : "grid-cols-1"} mb-4`}>
-        {hasVisualization && <TabsTrigger value="visualize">Visualize</TabsTrigger>}
-        {hasPrettyView && (
-           <TabsTrigger value="pretty">Pretty</TabsTrigger>
+      <TabsList className="grid w-full grid-cols-3 mb-4">
+        <TabsTrigger value="visualize" disabled={!hasVisualization}>Visualize</TabsTrigger>
+        {isAudio ? (
+          <TabsTrigger value="audio">Audio</TabsTrigger>
+        ) : (
+          <TabsTrigger value="pretty" disabled={!hasPrettyView}>Pretty</TabsTrigger>
         )}
         <TabsTrigger value="raw">Raw</TabsTrigger>
       </TabsList>
-       {hasVisualization && (
-        <TabsContent value="visualize" className="flex-grow h-0">
-          {isAudio ? <WaveFileViewer fileContent={fileContent} /> : <DataVisualizer data={null} rawFileContent={fileContent} />}
-        </TabsContent>
-      )}
-      {hasPrettyView && (
-         <TabsContent value="pretty" className="flex-grow h-0">
+
+      <TabsContent value="visualize" className="flex-grow h-0">
+         <DataVisualizer data={fileContent.extractedData || null} />
+      </TabsContent>
+
+      {isAudio ? (
+         <TabsContent value="audio" className="flex-grow h-0">
+           <WaveFileViewer fileContent={fileContent} />
+         </TabsContent>
+      ): (
+        <TabsContent value="pretty" className="flex-grow h-0">
           {fileContent.extension === ".csv" && <CsvViewer content={fileContent.content} />}
           {fileContent.extension === ".json" && <JsonViewer content={fileContent.content} />}
           {fileContent.extension === ".txt" && <TxtViewer content={fileContent.content} />}
-        </TabsContent>
+       </TabsContent>
       )}
+
       <TabsContent value="raw" className="flex-grow h-0">
         <TxtViewer content={fileContent.isBinary ? "Binary content not displayed." : fileContent.content} />
       </TabsContent>

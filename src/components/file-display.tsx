@@ -1,12 +1,11 @@
 "use client";
 
 import type { FileContent } from "@/lib/types";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileContentViewer } from "./file-content-viewer";
 import { Badge } from "./ui/badge";
 import { ServerCrash, FileSearch } from "lucide-react";
-import { ScrollArea } from "./ui/scroll-area";
 
 interface FileDisplayProps {
   fileContent: FileContent | null;
@@ -53,14 +52,12 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
     <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle className="font-headline flex items-center justify-between">
-          <span>{fileContent.name}</span>
+          <span className="truncate">{fileContent.name}</span>
           <Badge variant="outline">{fileContent.extension}</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow h-0">
-        <ScrollArea className="h-full">
           <FileContentViewer fileContent={fileContent} />
-        </ScrollArea>
       </CardContent>
     </Card>
   );

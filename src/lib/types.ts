@@ -18,5 +18,4 @@ export interface FileContent {
   name: string;
   isBinary?: boolean;
   extractedData?: DataPoint[] | null;
-  textContentForSummary?: string;
 }
