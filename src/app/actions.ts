@@ -101,7 +101,7 @@ export async function getFileContentAction(
     let extractedData = null;
     let rawMetadata: string | null = null;
 
-    if (['.wav', '.mp3', '.ogg'].includes(extension)) {
+    if (['.wav', '.mp3', 'ogg'].includes(extension)) {
         isBinary = true;
         // For audio playback, we need the entire file content as base64
         content = fileBuffer.toString('base64');
@@ -121,11 +121,12 @@ export async function getFileContentAction(
 
     } else {
         content = fileBuffer.toString("utf-8");
-        rawMetadata = content;
+        // For non-audio files, we can also try to extract data
         try {
             const result = await extractData({ fileContent: content });
             if (result.data && result.data.length > 0) {
                 extractedData = result.data;
+                rawMetadata = content; // The whole file is the metadata
             }
         } catch (e) {
             console.error("Could not extract metadata from text file:", e);

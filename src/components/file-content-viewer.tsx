@@ -15,23 +15,18 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
     return <WaveFileViewer fileContent={fileContent} />;
   }
 
+  // Fallback for non-wav files like JSON, CSV, TXT
   return (
-    <Tabs defaultValue="pretty" className="h-full flex flex-col">
+    <Tabs defaultValue="visualize" className="h-full flex flex-col">
       <TabsList>
-        <TabsTrigger value="pretty" disabled={!hasVisualization && fileContent.isBinary}>
+        <TabsTrigger value="visualize" disabled={!hasVisualization}>
           Visualize
         </TabsTrigger>
         <TabsTrigger value="raw">Raw Content</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="pretty" className="flex-grow h-0">
-        {hasVisualization ? (
+      <TabsContent value="visualize" className="flex-grow h-0">
           <DataVisualizer data={fileContent.extractedData} />
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            No structured data to visualize.
-          </div>
-        )}
       </TabsContent>
       <TabsContent value="raw" className="flex-grow h-0">
          <Card className="h-full">
