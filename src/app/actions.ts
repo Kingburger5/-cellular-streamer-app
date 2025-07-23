@@ -42,36 +42,36 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 }
 
 function findGuanoMetadata(buffer: Buffer): string | null {
-  const guanoHeader = "GUANO";
+  const guanoHeader = Buffer.from("GUANO");
   const headerIndex = buffer.indexOf(guanoHeader);
 
   if (headerIndex === -1) {
     return null;
   }
-
-  // Search for the end of the metadata block, which is terminated by a newline or null character.
-  // We'll search up to 4KB from the header, which is a generous limit for this kind of metadata.
-  const searchEnd = Math.min(headerIndex + 4096, buffer.length);
+  
+  // Search for the end of the metadata block, which is terminated by a newline.
+  // We'll search up to a reasonable limit from the header.
+  const searchEnd = Math.min(headerIndex + 8192, buffer.length);
   let metadataEnd = -1;
 
-  // Find the first newline or null terminator after the GUANO header.
   for (let i = headerIndex; i < searchEnd; i++) {
-    if (buffer[i] === 0x0a || buffer[i] === 0x00 || buffer[i] === 0x0d) {
+    // End of line character (LF)
+    if (buffer[i] === 0x0a) {
       metadataEnd = i;
       break;
     }
   }
 
   if (metadataEnd === -1) {
-    // If no terminator is found within the search range, we can't reliably extract the metadata.
+    // If no terminator is found, we can't reliably extract the metadata.
     return null;
   }
 
   // Extract the metadata block and decode it as UTF-8.
-  const metadataBlock = buffer.subarray(headerIndex, metadataEnd).toString('utf-8');
-
-  // Trim any whitespace or non-printable characters from the result.
-  return metadataBlock.trim();
+  // We trim any whitespace or non-printable characters from the result.
+  const metadataBlock = buffer.subarray(headerIndex, metadataEnd).toString('utf-8').trim();
+  
+  return metadataBlock;
 }
 
 
