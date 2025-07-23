@@ -4,9 +4,10 @@ import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning, AlertTriangle } from 'lucide-react';
 
 export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (!data || data.length === 0) {
     return (
@@ -37,18 +38,25 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
             <CardTitle className="flex items-center gap-2"><Satellite /> Location Data</CardTitle>
           </CardHeader>
           <CardContent>
-            {latestLocation && latestLocation.latitude && latestLocation.longitude ? (
+            {!apiKey && (
+              <div className="h-64 w-full bg-destructive/10 rounded-lg flex flex-col items-center justify-center p-4 text-center text-destructive">
+                <AlertTriangle className="w-8 h-8 mb-2" />
+                <h4 className="font-semibold">Google Maps API Key is missing.</h4>
+                <p className="text-sm">Please add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to your `.env.local` file to display the map.</p>
+              </div>
+            )}
+            {apiKey && latestLocation && latestLocation.latitude && latestLocation.longitude ? (
               <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <iframe
                   className="w-full h-full border-0 rounded-lg"
                   loading="lazy"
                   allowFullScreen
-                  src={`https://maps.google.com/maps?q=${latestLocation.latitude},${latestLocation.longitude}&hl=es;z=14&amp;output=embed`}
+                  src={`https://www.google.com/maps/embed/v1/view?key=${apiKey}&center=${latestLocation.latitude},${latestLocation.longitude}&zoom=14`}
                 >
                 </iframe>
               </div>
             ) : (
-              <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
+             apiKey && <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <p>No location data available.</p>
               </div>
             )}
