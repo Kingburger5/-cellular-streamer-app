@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { UploadedFile } from "@/lib/types";
@@ -41,7 +42,15 @@ interface FileListProps {
 export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete, onDeleteFile }: FileListProps) {
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", { timeZone: "UTC" });
+    return new Date(date).toLocaleString("en-US", { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true 
+    });
   }
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
