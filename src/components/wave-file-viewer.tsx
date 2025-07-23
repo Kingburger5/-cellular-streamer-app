@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DataVisualizer } from './data-visualizer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SummaryViewer } from './summary-viewer';
 
 export function WaveFileViewer({ fileContent, isDataLoading }: { fileContent: FileContent, isDataLoading: boolean }) {
     const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
@@ -16,10 +17,14 @@ export function WaveFileViewer({ fileContent, isDataLoading }: { fileContent: Fi
     return (
         <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
             <TabsList className="shrink-0">
+                <TabsTrigger value="summary">AI Summary</TabsTrigger>
                 <TabsTrigger value="visualization" disabled={!hasRawMetadata}>Data Visualization</TabsTrigger>
                 <TabsTrigger value="audio" disabled={!audioSrc}>Audio Playback</TabsTrigger>
                 <TabsTrigger value="metadata">Raw Metadata</TabsTrigger>
             </TabsList>
+             <TabsContent value="summary" className="flex-grow h-0">
+                <SummaryViewer fileContent={fileContent} />
+            </TabsContent>
             <TabsContent value="visualization" className="flex-grow h-0">
                  <DataVisualizer data={fileContent.extractedData} isLoading={isDataLoading}/>
             </TabsContent>
