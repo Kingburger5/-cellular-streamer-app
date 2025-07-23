@@ -42,7 +42,9 @@ const parseData = (file: FileContent): DataPoint[] | null => {
 
 export function DataVisualizer({ data: propData, rawFileContent }: { data: DataPoint[] | null, rawFileContent?: FileContent | null }) {
   const data = useMemo(() => {
+    // If data is passed directly, use it. This is for the WAV file case.
     if (propData) return propData;
+    // Otherwise, try to parse from the raw file content. This is for CSV/JSON.
     if (rawFileContent) return parseData(rawFileContent);
     return null;
   }, [propData, rawFileContent]);
