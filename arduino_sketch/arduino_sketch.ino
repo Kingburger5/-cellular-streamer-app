@@ -1,198 +1,198 @@
+
 #define TINY_GSM_MODEM_SIM7600
-#include <TinyGsmClient.h>
-#include <TinyGsmClientSecure.h> // For HTTPS
+
 #include <HardwareSerial.h>
+#include <TinyGsmClient.h>
 #include <SD.h>
 #include <SPI.h>
 
-// Server details
-const char server[] = "6000-firebase-studio-1753223410587.cluster-73qgvk7hjjadkrjeyexca5ivva.cloudworkstations.dev";
-const char *endpoint = "/api/upload";
-const int serverPort = 443; // Standard HTTPS port
+// ===== Configuration =====
+const char* server = "cellular-data-streamer.web.app";
+const int serverPort = 443;
+const char* apn = "vodafone"; // Your APN
+const char* gprsUser = "";    // Your GPRS user, if any
+const char* gprsPass = "";    // Your GPRS password, if any
 
-// Modem settings
 #define MODEM_TX 17
 #define MODEM_RX 16
 #define MODEM_BAUD 115200
+#define SD_CS 5
+#define CHUNK_SIZE 4096 // Keep chunk size reasonable for AT command buffer
+
+// ===== Globals =====
 HardwareSerial modemSerial(1);
 TinyGsm modem(modemSerial);
-TinyGsmClientSecure client(modem); // Use secure client for HTTPS
 
-// SD Card settings
-#define SD_CS 5
+// ===== Helper Functions =====
 
-// Upload settings
-#define CHUNK_SIZE 4096 // 4KB chunks
-#define MAX_RETRIES 3
-
-// Function to print detailed modem status for debugging
-void printModemStatus() {
-    Serial.println("--- Modem Status ---");
-    Serial.print("Modem Info: ");
-    Serial.println(modem.getModemInfo());
-
-    Serial.print("Signal Quality: ");
-    Serial.println(modem.getSignalQuality());
-
-    Serial.print("SIM Status: ");
-    Serial.println(modem.getSimStatus());
-
-    Serial.print("CCID: ");
-    Serial.println(modem.getSimCCID());
-
-    Serial.print("Operator: ");
-    Serial.println(modem.getOperator());
-    Serial.println("--------------------");
+/**
+ * @brief Reads the modem's response until a specific string is found or timeout.
+ * @param target The string to wait for (e.g., "OK", ">").
+ * @param timeout Duration to wait in milliseconds.
+ * @return True if the target string is found, false otherwise.
+ */
+bool expectResponse(const String& target, unsigned long timeout) {
+  String buffer;
+  unsigned long start = millis();
+  while (millis() - start < timeout) {
+    if (modemSerial.available()) {
+      char c = modemSerial.read();
+      buffer += c;
+      Serial.write(c); // Echo response to Serial for debugging
+      if (buffer.indexOf(target) != -1) {
+        return true;
+      }
+    }
+  }
+  Serial.println("\n[DEBUG] Timeout waiting for: " + target);
+  Serial.println("[DEBUG] Received: " + buffer);
+  return false;
 }
 
+/**
+ * @brief Sends an AT command and waits for "OK".
+ * @param cmd The AT command to send.
+ * @param timeout Duration to wait for "OK".
+ * @return True if "OK" is received, false otherwise.
+ */
+bool sendAT(const String& cmd, unsigned long timeout = 1000) {
+    Serial.println("[AT SEND] " + cmd);
+    modemSerial.println(cmd);
+    return expectResponse("OK", timeout);
+}
+
+
 void setup() {
-    Serial.begin(115200);
-    delay(1000);
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("🔌 Booting...");
 
-    Serial.println("?? Booting...");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("❌ SD card failed to initialize. Halting.");
+    while (true);
+  }
+  Serial.println("✅ SD card ready.");
 
-    if (!SD.begin(SD_CS)) {
-        Serial.println("? SD card failed to initialize.");
-        while (true);
-    }
-    Serial.println("? SD card ready.");
+  Serial.println("Initializing modem...");
+  modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
+  delay(3000);
+  modem.restart();
+  
+  Serial.println("✅ Modem restarted.");
 
-    Serial.println("Initializing modem...");
-    modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
-    delay(3000);
-    if (!modem.restart()) {
-        Serial.println("? Failed to restart modem.");
-    }
-    Serial.println("? Modem restarted.");
+  Serial.println("--- Modem Status ---");
+  sendAT("ATI", 1000);
+  sendAT("AT+CSQ", 1000);
+  sendAT("AT+CPIN?", 1000);
+  sendAT("AT+CREG?", 1000);
+  Serial.println("--------------------");
 
-    printModemStatus();
+  Serial.println("📡 Connecting to network...");
+  if (!modem.gprsConnect(apn, gprsUser, gprsPass)) {
+      Serial.println("❌ GPRS connection failed.");
+      while(true);
+  }
+  
+  Serial.println("✅ GPRS connected.");
+  sendAT("AT+IPADDR", 1000);
 
-    Serial.println("?? Connecting to network...");
-    if (!modem.gprsConnect("vodafone", "", "")) {
-        Serial.println("? GPRS connection failed.");
-        while (true);
-    }
-    Serial.println("? GPRS connected.");
-    Serial.print("Local IP: ");
-    Serial.println(modem.getLocalIP());
 
-    // This is crucial for development servers with temporary or self-signed certs
-    client.setInsecure();
-
-    // Upload your file
-    uploadFile("/sigma2.wav");
+  // Upload the file
+  sendFileChunks("/sigma2.wav");
 }
 
 void loop() {
-    // Loop is intentionally empty
+  // Keep empty
 }
 
-void uploadFile(const char *filename) {
-    File file = SD.open(filename, FILE_READ);
-    if (!file) {
-        Serial.print("? Failed to open file: ");
-        Serial.println(filename);
-        return;
-    }
 
-    size_t totalSize = file.size();
-    Serial.print("?? Preparing to upload ");
-    Serial.print(filename);
-    Serial.print(" (");
-    Serial.print(totalSize);
-    Serial.println(" bytes)");
+void sendFileChunks(const char* filename) {
+  File file = SD.open(filename, FILE_READ);
+  if (!file) {
+    Serial.println("❌ Failed to open file for reading.");
+    return;
+  }
 
-    size_t offset = 0;
-    bool success = true;
-
-    while (offset < totalSize) {
-        size_t chunkSize = min((size_t)CHUNK_SIZE, totalSize - offset);
-        bool chunkSent = false;
-
-        for (int retry = 0; retry < MAX_RETRIES; ++retry) {
-            Serial.printf("  Attempt %d/%d to send chunk at offset %d...\n", retry + 1, MAX_RETRIES, offset);
-            
-            if (!client.connect(server, serverPort)) {
-                Serial.printf("    ...connection to %s:%d failed.\n", server, serverPort);
-                delay(2000); // Wait before retrying
-                continue;
-            }
-            Serial.println("    ...connection successful.");
-
-            // Construct and send headers
-            String headers;
-            headers += "POST " + String(endpoint) + " HTTP/1.1\r\n";
-            headers += "Host: " + String(server) + "\r\n";
-            headers += "X-Filename: " + String(filename).substring(1) + "\r\n"; // Remove leading '/'
-            headers += "X-Total-Size: " + String(totalSize) + "\r\n";
-            headers += "X-Chunk-Size: " + String(chunkSize) + "\r\n";
-            headers += "X-Chunk-Offset: " + String(offset) + "\r\n";
-            headers += "Content-Type: application/octet-stream\r\n";
-            headers += "Content-Length: " + String(chunkSize) + "\r\n";
-            headers += "Connection: close\r\n";
-            headers += "\r\n";
-            
-            Serial.println("--- Sending Headers ---");
-            Serial.print(headers);
-            Serial.println("-----------------------");
-
-            client.print(headers);
-
-            // Read file chunk and send
-            uint8_t buffer[CHUNK_SIZE];
-            file.seek(offset);
-            size_t bytesRead = file.read(buffer, chunkSize);
-            if (bytesRead != chunkSize) {
-                 Serial.println("? Error reading from SD card.");
-                 client.stop();
-                 break; // Break retry loop
-            }
-            
-            client.write(buffer, chunkSize);
-
-            // Wait for and print response
-            unsigned long timeout = millis();
-            bool responseOk = false;
-            String response = "";
-            while (client.connected() && millis() - timeout < 10000) {
-                if (client.available()) {
-                    response += client.readStringUntil('\n') + "\n";
-                    if (response.indexOf("HTTP/1.1 200") != -1 || response.indexOf("HTTP/1.1 201") != -1) {
-                        responseOk = true;
-                    }
-                }
-            }
-            
-            Serial.println("--- Server Response ---");
-            Serial.print(response);
-            Serial.println("-----------------------");
-
-            if (responseOk) {
-                Serial.printf("    ...chunk at offset %d sent successfully.\n", offset);
-                chunkSent = true;
-                client.stop();
-                break; // Success, exit retry loop
-            } else {
-                Serial.println("    ...upload of chunk failed (bad response).");
-                client.stop();
-                delay(2000); // Wait before retrying
-            }
-        }
-
-        if (!chunkSent) {
-            Serial.printf("? Failed to upload chunk at offset %d after %d retries. Aborting.\n", offset, MAX_RETRIES);
-            success = false;
-            break; // Abort file upload
-        }
-
-        offset += chunkSize;
-    }
-
-    if (success) {
-        Serial.println("? File upload finished successfully.");
-    } else {
-        Serial.println("? File upload failed.");
-    }
-
+  size_t totalSize = file.size();
+  Serial.printf("📤 Preparing to upload %s (%d bytes)\n", filename, totalSize);
+  
+  // Start HTTPS session
+  if (!sendAT("AT+CHTTPSSTART", 5000)) {
+    Serial.println("❌ Failed to start HTTPS service.");
     file.close();
+    return;
+  }
+
+  // Open session to server
+  if (!sendAT("AT+CHTTPSOPSE=\"" + String(server) + "\"," + String(serverPort), 15000)) {
+     Serial.println("❌ Failed to open HTTPS session to server.");
+     sendAT("AT+CHTTPSSTOP", 5000);
+     file.close();
+     return;
+  }
+
+  bool uploadSuccess = true;
+  for (size_t offset = 0; offset < totalSize; offset += CHUNK_SIZE) {
+    size_t chunkSize = min((size_t)CHUNK_SIZE, totalSize - offset);
+    
+    // Build headers
+    String headers = "Content-Type: application/octet-stream\r\n";
+    headers += "X-Filename: " + String(filename) + "\r\n";
+    headers += "X-Chunk-Offset: " + String(offset) + "\r\n";
+    headers += "X-Chunk-Size: " + String(chunkSize) + "\r\n";
+    headers += "X-Total-Size: " + String(totalSize) + "\r\n";
+    
+    // Prepare the POST request. This tells the modem how much header and content data to expect.
+    String postCmd = "AT+CHTTPSPOST=\"/api/upload\"," + String(headers.length()) + "," + String(10000) + "," + String(chunkSize);
+    
+    Serial.println("[AT SEND] " + postCmd);
+    modemSerial.println(postCmd);
+
+    // Wait for the modem to be ready for the headers
+    if (!expectResponse(">", 5000)) {
+        Serial.println("❌ Modem did not respond to POST command. Aborting.");
+        uploadSuccess = false;
+        break;
+    }
+    
+    // Send the headers
+    Serial.println("[HEADERS] Sending " + String(headers.length()) + " bytes of headers.");
+    modemSerial.print(headers);
+    
+    // The modem should be ready for the content data now.
+    // The previous expectResponse should have consumed the first ">", but sometimes there's another.
+    if (!expectResponse(">", 5000)) {
+        Serial.println("❌ Modem not ready for content data. Aborting.");
+        uploadSuccess = false;
+        break;
+    }
+
+    // Send the content chunk
+    Serial.println("[CONTENT] Sending " + String(chunkSize) + " bytes of content.");
+    uint8_t buffer[chunkSize];
+    file.read(buffer, chunkSize);
+    modemSerial.write(buffer, chunkSize);
+    modemSerial.flush();
+
+    // Wait for the server's HTTP response (e.g., +CHTTPS: POST,200)
+    if (!expectResponse("+CHTTPS: POST,200", 15000) && !expectResponse("+CHTTPS: POST,201", 1000)) {
+        Serial.println("❌ Received non-200/201 response for chunk at offset " + String(offset));
+        uploadSuccess = false;
+        break; // Stop on first error
+    }
+    
+    Serial.printf("✅ Chunk %d/%d uploaded successfully.\n", (offset/CHUNK_SIZE) + 1, (totalSize/CHUNK_SIZE) + 1);
+    delay(500); // Small delay between chunks
+  }
+
+  // Close session and stop HTTPS
+  sendAT("AT+CHTTPSCLSE", 5000);
+  sendAT("AT+CHTTPSSTOP", 5000);
+  file.close();
+
+  if (uploadSuccess) {
+    Serial.println("✅ File upload finished successfully!");
+  } else {
+    Serial.println("❌ File upload failed.");
+  }
 }
