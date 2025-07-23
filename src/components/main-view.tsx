@@ -70,10 +70,12 @@ export function MainView({ initialFiles }: MainViewProps) {
         return;
       }
       setFileContent(contentResult);
+      
+      const fileContentForSummary = contentResult.isBinary ? (contentResult.extractedData ? JSON.stringify(contentResult.extractedData) : "") : contentResult.content;
 
       const summaryResult = await generateSummaryAction({
         filename: contentResult.name,
-        fileContent: contentResult.content,
+        fileContent: fileContentForSummary,
         isBinary: contentResult.isBinary
       });
 

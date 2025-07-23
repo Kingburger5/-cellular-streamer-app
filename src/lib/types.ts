@@ -4,9 +4,18 @@ export interface UploadedFile {
   uploadDate: Date;
 }
 
+export interface DataPoint {
+  timestamp: string;
+  latitude: number;
+  longitude: number;
+  temperature: number;
+  flybys: number;
+}
+
 export interface FileContent {
   content: string;
   extension: string;
   name: string;
   isBinary?: boolean;
+  extractedData?: DataPoint[] | null;
 }

@@ -3,6 +3,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { summarizeFile } from "@/ai/flows/summarize-file";
+import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent } from "@/lib/types";
 
 const UPLOAD_DIR = "/tmp/uploads";
@@ -52,18 +53,30 @@ export async function getFileContentAction(
     const filePath = path.join(UPLOAD_DIR, sanitizedFilename);
     const extension = path.extname(sanitizedFilename).toLowerCase();
     
+    const fileBuffer = await fs.readFile(filePath);
     let content: string;
     let isBinary = false;
+    let extractedData = null;
 
     if (['.wav', '.mp3', '.ogg'].includes(extension)) {
-        const fileBuffer = await fs.readFile(filePath);
         content = fileBuffer.toString('base64');
         isBinary = true;
+        // Also try to read as text to extract metadata
+        try {
+            const textContent = fileBuffer.toString('utf-8');
+            const result = await extractData({ fileContent: textContent });
+            if (result.data && result.data.length > 0) {
+              extractedData = result.data;
+            }
+        } catch (e) {
+            console.log("Could not extract metadata from audio file:", e);
+        }
+
     } else {
-        content = await fs.readFile(filePath, "utf-8");
+        content = fileBuffer.toString("utf-8");
     }
 
-    return { content, extension, name: sanitizedFilename, isBinary };
+    return { content, extension, name: sanitizedFilename, isBinary, extractedData };
   } catch (error) {
     console.error(`Error reading file ${filename}:`, error);
     return null;
@@ -78,7 +91,7 @@ export async function generateSummaryAction(input: {
   try {
     // Avoid sending large binary content to the summarizer
     if (input.isBinary) {
-      return { summary: "Cannot summarize binary files." };
+      return { summary: "This is a binary file. The summary is based on any parsable text content." };
     }
     const result = await summarizeFile({
         filename: input.filename,

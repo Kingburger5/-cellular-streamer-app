@@ -1,22 +1,17 @@
 "use client";
 
 import { useMemo } from 'react';
-import type { FileContent } from '@/lib/types';
+import type { FileContent, DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Satellite, Thermometer, Send, FileWarning } from 'lucide-react';
 
-interface DataPoint {
-  timestamp: string;
-  latitude: number;
-  longitude: number;
-  temperature: number;
-  flybys: number;
-}
-
 const parseData = (file: FileContent): DataPoint[] | null => {
   try {
+    if (file.extractedData) {
+        return file.extractedData;
+    }
     if (file.extension === '.json') {
       const data = JSON.parse(file.content);
       return Array.isArray(data) ? data : [];
@@ -45,8 +40,12 @@ const parseData = (file: FileContent): DataPoint[] | null => {
 };
 
 
-export function DataVisualizer({ fileContent }: { fileContent: FileContent }) {
-  const data = useMemo(() => parseData(fileContent), [fileContent]);
+export function DataVisualizer({ data: propData, rawFileContent }: { data: DataPoint[] | null, rawFileContent?: FileContent | null }) {
+  const data = useMemo(() => {
+    if (propData) return propData;
+    if (rawFileContent) return parseData(rawFileContent);
+    return null;
+  }, [propData, rawFileContent]);
 
   if (data === null) {
     return (
@@ -64,7 +63,7 @@ export function DataVisualizer({ fileContent }: { fileContent: FileContent }) {
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
         <FileWarning className="w-12 h-12 mb-4" />
         <h3 className="font-semibold">Could not parse data</h3>
-         <p className="text-sm">Ensure the file is valid JSON or CSV with headers like: timestamp, latitude, longitude, temperature, flybys.</p>
+         <p className="text-sm">Ensure the file is valid JSON or CSV or a WAV with embedded metadata. Headers should include: timestamp, latitude, longitude, temperature, flybys.</p>
       </div>
     );
   }
@@ -76,7 +75,7 @@ export function DataVisualizer({ fileContent }: { fileContent: FileContent }) {
 
   const avgTemperature = (data.reduce((acc, d) => acc + (d.temperature || 0), 0) / data.length).toFixed(1);
   const totalFlybys = data.reduce((acc, d) => acc + (d.flybys || 0), 0);
-  const latestLocation = data[data.length - 1];
+  const latestLocation = data.length > 0 ? data[data.length - 1] : null;
 
   return (
     <ScrollArea className="h-full">
@@ -90,14 +89,20 @@ export function DataVisualizer({ fileContent }: { fileContent: FileContent }) {
              <div className="h-64 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <div className="w-full h-px bg-border absolute top-1/2 left-0"></div>
                 <div className="h-full w-px bg-border absolute left-1/2 top-0"></div>
-                <div className="text-center">
-                    <p className="font-bold text-lg">{latestLocation.latitude.toFixed(4)}, {latestLocation.longitude.toFixed(4)}</p>
-                    <p className="text-sm text-muted-foreground">Latest Reported Position</p>
-                </div>
-                <Send className="text-primary w-8 h-8 absolute" style={{ 
-                    top: `calc(50% - ${latestLocation.latitude % 1 * 50}px - 16px)`, 
-                    left: `calc(50% + ${latestLocation.longitude % 1 * 50}px - 16px)`
-                }}/>
+                {latestLocation ? (
+                    <>
+                        <div className="text-center">
+                            <p className="font-bold text-lg">{latestLocation.latitude.toFixed(4)}, {latestLocation.longitude.toFixed(4)}</p>
+                            <p className="text-sm text-muted-foreground">Latest Reported Position</p>
+                        </div>
+                        <Send className="text-primary w-8 h-8 absolute" style={{ 
+                            top: `calc(50% - ${latestLocation.latitude % 1 * 50}px - 16px)`, 
+                            left: `calc(50% + ${latestLocation.longitude % 1 * 50}px - 16px)`
+                        }}/>
+                    </>
+                ) : (
+                    <p>No location data available.</p>
+                )}
             </div>
           </CardContent>
         </Card>

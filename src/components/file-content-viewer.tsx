@@ -1,13 +1,11 @@
 "use client";
 
 import type { FileContent } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "./ui/scroll-area";
 import { DataVisualizer } from "./data-visualizer";
-import { Music } from "lucide-react";
+import { WaveFileViewer } from "./wave-file-viewer";
 
 function CsvViewer({ content }: { content: string }) {
   const rows = content.split("\n").filter(Boolean);
@@ -54,23 +52,10 @@ function TxtViewer({ content }: { content: string }) {
   return <pre className="text-sm whitespace-pre-wrap">{content}</pre>;
 }
 
-function AudioPlayer({ fileContent }: { fileContent: FileContent }) {
-    const audioSrc = `data:audio/wav;base64,${fileContent.content}`;
-    return (
-        <div className="flex flex-col items-center justify-center h-full p-4">
-            <Music className="w-24 h-24 text-primary mb-4" />
-            <h3 className="text-lg font-medium mb-2">{fileContent.name.substring(fileContent.name.indexOf('-') + 1)}</h3>
-            <audio controls src={audioSrc} className="w-full max-w-md">
-                Your browser does not support the audio element.
-            </audio>
-        </div>
-    );
-}
-
 
 export function FileContentViewer({ fileContent }: { fileContent: FileContent }) {
   const hasPrettyView = [".json", ".csv", ".txt"].includes(fileContent.extension);
-  const isDataVis = [".json", ".csv"].includes(fileContent.extension);
+  const isDataVis = [".json", ".csv"].includes(fileContent.extension) || (fileContent.extension === '.wav' && !!fileContent.extractedData);
   const isAudio = fileContent.extension === ".wav";
   const hasVisualization = isDataVis || isAudio;
 
@@ -87,7 +72,7 @@ export function FileContentViewer({ fileContent }: { fileContent: FileContent })
       </TabsList>
        {hasVisualization && (
         <TabsContent value="visualize" className="flex-grow h-0">
-          {isAudio ? <AudioPlayer fileContent={fileContent} /> : <DataVisualizer fileContent={fileContent} />}
+          {isAudio ? <WaveFileViewer fileContent={fileContent} /> : <DataVisualizer data={null} rawFileContent={fileContent} />}
         </TabsContent>
       )}
       {hasPrettyView && (
