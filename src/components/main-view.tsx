@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useTransition, useCallback, useEffect } from "react";
@@ -48,7 +49,9 @@ export function MainView({ initialFiles }: MainViewProps) {
         if (refreshedFiles.length > 0) {
             // Find the newest file to select it
             const newFile = refreshedFiles.reduce((latest, file) => new Date(file.uploadDate) > new Date(latest.uploadDate) ? file : latest);
-            handleSelectFile(newFile.name);
+            if (newFile) {
+                handleSelectFile(newFile.name);
+            }
         }
     });
   }, [toast, handleRefresh]);
