@@ -5,7 +5,7 @@ import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap } from 'lucide-react';
+import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
 import { FormattedDate } from './formatted-date';
 
@@ -42,6 +42,7 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
   const minFreq = data.length > 0 ? data[0].minTriggerFreq : null;
   const maxFreq = data.length > 0 ? data[0].maxTriggerFreq : null;
   const recordingDate = data.length > 0 ? new Date(data[0].timestamp) : null;
+  const device = data.length > 0 ? { make: data[0].make, model: data[0].model } : null;
 
 
   return (
@@ -100,25 +101,37 @@ export function DataVisualizer({ data }: { data: DataPoint[] | null }) {
                      <p className="text-3xl font-bold">{totalFlybys || 0}</p>
                 </CardContent>
             </Card>
-            {sampleRate && (
-                <Card>
+            {device?.make && device?.model && (
+                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-base font-normal flex items-center gap-2"><RadioTower /> Sample Rate</CardTitle>
+                        <CardTitle className="text-base font-normal flex items-center gap-2"><HardDrive /> Device</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-3xl font-bold">{formatHz(sampleRate)}</p>
+                        <p className="text-lg font-bold leading-tight">{device.model}</p>
+                        <p className="text-sm text-muted-foreground">{device.make}</p>
                     </CardContent>
                 </Card>
             )}
         </div>
 
+        {sampleRate && (
+            <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-normal flex items-center gap-2"><RadioTower /> Sample Rate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-3xl font-bold">{formatHz(sampleRate)}</p>
+                </CardContent>
+            </Card>
+        )}
+
         {(minFreq || maxFreq) && (
-             <Card className="lg:col-span-4">
+             <Card className="lg:col-span-2">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-base font-normal flex items-center gap-2"><Zap /> Trigger Frequency</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex justify-around">
+                    <div className="flex justify-around items-center pt-2">
                         {minFreq && <div className="text-center"><p className="text-xs text-muted-foreground">Min</p><p className="text-2xl font-bold">{formatHz(minFreq)}</p></div>}
                         {maxFreq && <div className="text-center"><p className="text-xs text-muted-foreground">Max</p><p className="text-2xl font-bold">{formatHz(maxFreq)}</p></div>}
                     </div>

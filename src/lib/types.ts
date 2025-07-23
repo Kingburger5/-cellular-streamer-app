@@ -14,6 +14,8 @@ export interface DataPoint {
   sampleRate?: number;
   minTriggerFreq?: number;
   maxTriggerFreq?: number;
+  make?: string;
+  model?: string;
 }
 
 export interface FileContent {

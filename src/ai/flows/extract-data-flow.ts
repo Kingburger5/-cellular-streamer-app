@@ -20,6 +20,8 @@ const DataPointSchema = z.object({
   sampleRate: z.number().optional().describe('The sample rate in Hz.'),
   minTriggerFreq: z.number().optional().describe('The minimum trigger frequency in Hz.'),
   maxTriggerFreq: z.number().optional().describe('The maximum trigger frequency in Hz.'),
+  make: z.string().optional().describe('The make of the recording device (e.g., "Wildlife Acoustics, Inc.").'),
+  model: z.string().optional().describe('The model of the recording device (e.g., "Song Meter Mini Bat").'),
 });
 
 const ExtractDataInputSchema = z.object({
@@ -47,6 +49,7 @@ Your task is to parse this text and extract the relevant data points into a sing
 - The 'Loc Position' field contains both latitude and longitude, separated by a space. You must extract them into the separate 'latitude' and 'longitude' fields.
 - The temperature might be labeled as 'Temperature Int'.
 - The 'Samplerate' field should be extracted as 'sampleRate'.
+- The 'Make' and 'Model' fields should be extracted into 'make' and 'model'.
 - The 'Audio settings' field is a JSON string. From this, you must extract 'trig min freq' as 'minTriggerFreq' and 'trig max freq' as 'maxTriggerFreq'.
 - If a field like 'flybys' is not present in the text, you should omit it from the output for that data point.
 - If no parsable data is found, return an empty array for the 'data' field.
@@ -62,6 +65,8 @@ From this example, you must extract:
 - sampleRate: 256000
 - minTriggerFreq: 30000
 - maxTriggerFreq: 128000
+- make: "Wildlife Acoustics, Inc."
+- model: "Song Meter Mini Bat"
 
 Now, please process the following content:
 
