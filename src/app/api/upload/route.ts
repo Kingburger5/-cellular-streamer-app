@@ -1,56 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStorage } from 'firebase-admin/storage';
-import { adminApp } from "@/lib/firebase-admin";
+import fs from "fs/promises";
+import path from "path";
 
-async function getUploadUrl(filePath: string): Promise<string> {
-    const bucket = getStorage(adminApp).bucket();
-    const file = bucket.file(filePath);
-    const expires = Date.now() + 60 * 60 * 1000; // 1 hour
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
-    const [url] = await file.getSignedUrl({
-        action: 'write',
-        expires: expires,
-        contentType: 'application/octet-stream',
-    });
-
-    return url;
+async function ensureUploadDirExists() {
+  try {
+    await fs.access(UPLOAD_DIR);
+  } catch {
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  }
 }
-
 
 export async function POST(request: NextRequest) {
   try {
-    const filename = request.headers.get("x-filename");
-    if (!filename) {
-      return NextResponse.json({ error: "x-filename header is required." }, { status: 400 });
+    await ensureUploadDirExists();
+    const formData = await request.formData();
+    const chunk = formData.get("chunk") as File | null;
+    const fileIdentifier = formData.get("fileIdentifier") as string | null;
+    const chunkIndexStr = formData.get("chunkIndex") as string | null;
+    const totalChunksStr = formData.get("totalChunks") as string | null;
+    const originalFilename = formData.get("originalFilename") as string | null;
+
+    if (!chunk || !fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
+      return NextResponse.json({ error: "Missing required form data." }, { status: 400 });
     }
 
-    const signedUrl = await getUploadUrl(filename);
-    
-    const readable = request.body;
-    if (!readable) {
-        return NextResponse.json({ error: "Request body is empty" }, { status: 400 });
-    }
-    
-    const response = await fetch(signedUrl, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/octet-stream'
-        },
-        body: readable,
-        cache: 'no-store',
-        // @ts-ignore
-        duplex: 'half'
-    });
+    const chunkIndex = parseInt(chunkIndexStr);
+    const totalChunks = parseInt(totalChunksStr);
 
-    if (response.ok) {
-        console.log(`File uploaded successfully: ${filename}`);
-        return NextResponse.json({ message: "File uploaded successfully.", filename: filename }, { status: 200 });
-    } else {
-        const errorText = await response.text();
-        console.error("Upload to GCS failed:", response.status, errorText);
-        return NextResponse.json({ error: "Failed to upload to Google Cloud Storage", details: errorText }, { status: response.status });
+    // Sanitize filename to prevent directory traversal
+    const safeFilename = path.basename(originalFilename);
+    const tempFilePath = path.join(UPLOAD_DIR, `${fileIdentifier}.part`);
+
+    const buffer = Buffer.from(await chunk.arrayBuffer());
+    await fs.appendFile(tempFilePath, buffer);
+
+    if (chunkIndex === totalChunks - 1) {
+      // Last chunk, rename the file
+      const finalFilePath = path.join(UPLOAD_DIR, safeFilename);
+      await fs.rename(tempFilePath, finalFilePath);
+      console.log(`File uploaded successfully: ${safeFilename}`);
+      return NextResponse.json({ message: "File uploaded successfully.", filename: safeFilename }, { status: 200 });
     }
-    
+
+    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
+
   } catch (error) {
     console.error("Upload error:", error);
     const errorMessage = error instanceof Error ? error.message : "Internal Server Error";

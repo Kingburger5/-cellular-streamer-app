@@ -6,7 +6,7 @@ import path from "path";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
-const UPLOAD_DIR = "/tmp/uploads";
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
 async function ensureUploadDirExists() {
   try {
