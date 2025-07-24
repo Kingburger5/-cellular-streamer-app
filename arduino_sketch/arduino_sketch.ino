@@ -1,201 +1,192 @@
-// This is the final, corrected code for uploading a file from an SD card
-// via a SIM7600G module to a server using HTTPS POST.
-
-// Define the serial port for communication with the SIM7600 module.
+// Define the serial port for communication with the SIM7600 module
+#define DUMP_AT_COMMANDS
+#define TINY_GSM_MODEM_SIM7600
+#define SerialMon Serial
 #define SerialAT Serial1
 
-// Define the pin for the SD card chip select.
-#define SD_CS 5
+// Pin definitions for the SIM7600 module
+#define UART_BAUD           115200
+#define PIN_DTR             25
+#define PIN_TX              26
+#define PIN_RX              27
+#define PIN_PWRKEY          4
+#define PIN_RST             5
+#define PIN_FLIGHT          23
+#define PIN_RI              34
 
-// --- Library Includes ---
-#include <Arduino.h>
-#include <SD.h>
+// SD Card pins
+#define SD_MISO             2
+#define SD_MOSI             15
+#define SD_SCLK             14
+#define SD_CS               13
+
 #include <SPI.h>
-#include "FS.h"
-#define TINY_GSM_MODEM_SIM7600
-#include <TinyGsmClient.h>
-#include <SSLClient.h>
+#include <SD.h>
+#include <Update.h>
 
-// --- Server Configuration ---
-const char server[] = "cellular-data-streamer.web.app";
-const char resource[] = "/api/upload";
-const int port = 443; // HTTPS port
+const char apn[]  = "TM";
+const char user[] = "";
+const char pass[] = "";
 
-// --- Modem and Client Initialization ---
-TinyGsm modem(SerialAT);
-TinyGsmClient base_client(modem);
-SSLClient client(base_client);
+// Firebase Storage details
+const char server[] = "firebasestorage.googleapis.com";
+const int  port = 443;
+const char storageBucket[] = "cellular-data-streamer.firebasestorage.app";
 
-// --- Function to send an AT command and wait for a specific response ---
-bool sendATCommand(const char* cmd, const char* expected_response, unsigned long timeout = 10000) {
-    Serial.print("Sending AT: ");
-    Serial.println(cmd);
-    
-    SerialAT.println(cmd);
-    
-    unsigned long start = millis();
-    String response = "";
-    while (millis() - start < timeout) {
-        if (SerialAT.available()) {
-            char c = SerialAT.read();
-            response += c;
-            if (response.indexOf(expected_response) != -1) {
-                Serial.print("Received: ");
-                Serial.println(response);
-                return true;
-            }
-        }
+File file;
+
+// Function to send AT commands and wait for a response
+String sendATCommand(const char* cmd, unsigned long timeout, const char* expected_response) {
+  String response = "";
+  SerialAT.println(cmd);
+  SerialMon.print(">> ");
+  SerialMon.println(cmd);
+
+  unsigned long startTime = millis();
+  while (millis() - startTime < timeout) {
+    if (SerialAT.available()) {
+      char c = SerialAT.read();
+      response += c;
     }
-    Serial.print("Timeout. Full response: ");
-    Serial.println(response);
-    return false;
+    if (expected_response != NULL && response.indexOf(expected_response) != -1) {
+      break;
+    }
+  }
+  SerialMon.print("<< ");
+  SerialMon.println(response);
+  return response;
+}
+
+void modemPowerOn() {
+  pinMode(PIN_PWRKEY, OUTPUT);
+  digitalWrite(PIN_PWRKEY, LOW);
+  delay(100);
+  digitalWrite(PIN_PWRKEY, HIGH);
+  delay(1000);
+  digitalWrite(PIN_PWRKEY, LOW);
 }
 
 void setup() {
-    Serial.begin(115200);
-    delay(10);
+  SerialMon.begin(115200);
+  delay(10);
 
-    Serial.println("--- Cellular Data Streamer ---");
+  SerialMon.println("🚀 Initializing...");
 
-    // --- Initialize Modem ---
-    SerialAT.begin(115200, SERIAL_8N1, 27, 26); // RX, TX pins for ESP32
-    delay(6000);
+  // Set up modem serial communication
+  SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
 
-    Serial.println("Initializing modem...");
-    if (!modem.restart()) {
-        Serial.println("Failed to restart modem. Halting.");
-        while (true);
+  // Power on the modem
+  modemPowerOn();
+  
+  // Wait for the modem to be ready
+  delay(5000);
+  
+  sendATCommand("ATE0", 1000, "OK"); // Echo off
+  sendATCommand("AT", 1000, "OK");
+  sendATCommand("AT+CPIN?", 5000, "READY");
+  sendATCommand("AT+CNMP=38", 3000, "OK"); // 4G/LTE Only
+  sendATCommand("AT+CSQ", 1000, "OK");
+  sendATCommand("AT+CGDCONT=1,\"IP\",\"" APN "\"", 3000, "OK");
+  sendATCommand("AT+CGACT=1,1", 3000, "OK");
+
+  // Initialize SD card
+  SPI.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
+  if (!SD.begin(SD_CS)) {
+    SerialMon.println("❌ SD Card initialization failed!");
+    while (1);
+  }
+  SerialMon.println("✅ SD Card initialized.");
+
+  // List files on SD card
+  File root = SD.open("/");
+  while (true) {
+    File entry = root.openNextFile();
+    if (!entry) {
+      break;
     }
-    Serial.println("Modem initialized.");
+    SerialMon.println(entry.name());
+    entry.close();
+  }
+  root.close();
 
-    // --- Configure Modem ---
-    sendATCommand("AT+CFUN=1", "OK");       // Set to full functionality
-    sendATCommand("AT+CNMP=38", "OK");      // Set to LTE-only mode
-    sendATCommand("AT+CGDCONT=1,\"IP\",\"\"", "OK"); // Use default APN
-
-    // --- Connect to Network ---
-    Serial.println("Waiting for network...");
-    if (!modem.waitForNetwork()) {
-        Serial.println("Failed to connect to network. Halting.");
-        while (true);
-    }
-    Serial.println("Network connected.");
-
-    Serial.println("Connecting to GPRS...");
-    if (!modem.gprsConnect()) {
-        Serial.println("Failed to connect to GPRS. Halting.");
-        while (true);
-    }
-    Serial.println("GPRS connected.");
-
-    // --- Initialize SD Card ---
-    Serial.println("Initializing SD card...");
-    if (!SD.begin(SD_CS)) {
-        Serial.println("SD card initialization failed. Halting.");
-        while (true);
-    }
-    Serial.println("SD card initialized.");
-
-    // This is required for the SSLClient library.
-    // It tells the library not to try and verify the server's SSL certificate.
-    client.setInsecure();
-}
-
-// --- Main File Upload Function ---
-void uploadFile(const char* filename) {
-    File file = SD.open(filename, FILE_READ);
-    if (!file) {
-        Serial.println("Failed to open file for reading.");
-        return;
-    }
-
-    size_t fileSize = file.size();
-    Serial.print("Attempting to upload: ");
-    Serial.print(filename);
-    Serial.print(" (");
-    Serial.print(fileSize);
-    Serial.println(" bytes)");
-
-    Serial.print("Connecting to server: ");
-    Serial.println(server);
-
-    if (!client.connect(server, port)) {
-        Serial.println("Connection to server failed!");
-        file.close();
-        return;
-    }
-    Serial.println("Connected to server.");
-
-    // --- Construct and Send HTTP Headers ---
-    String headers = "POST " + String(resource) + " HTTP/1.1\r\n";
-    headers += "Host: " + String(server) + "\r\n";
-    headers += "X-Filename: " + String(filename) + "\r\n";
-    headers += "Content-Type: application/octet-stream\r\n";
-    headers += "Content-Length: " + String(fileSize) + "\r\n";
-    headers += "Connection: close\r\n\r\n";
-    
-    client.print(headers);
-    Serial.println("--- HTTP Headers Sent ---");
-    Serial.println(headers);
-    Serial.println("-------------------------");
-
-
-    // --- Send File Content ---
-    Serial.println("Sending file content...");
-    const size_t bufferSize = 1024;
-    byte buffer[bufferSize];
-    size_t bytesSent = 0;
-    
-    while (file.available()) {
-        size_t bytesRead = file.read(buffer, bufferSize);
-        if (bytesRead > 0) {
-            client.write(buffer, bytesRead);
-            bytesSent += bytesRead;
-            Serial.print("\rSent ");
-            Serial.print(bytesSent);
-            Serial.print(" of ");
-            Serial.print(fileSize);
-            Serial.print(" bytes");
-        }
-    }
-    Serial.println("\nFile content sent.");
-
-    file.close();
-
-    // --- Wait for Server Response ---
-    Serial.println("Waiting for server response...");
-    unsigned long timeout = millis();
-    while (client.available() == 0) {
-        if (millis() - timeout > 15000) { // 15 second timeout
-            Serial.println("Client timeout!");
-            client.stop();
-            return;
-        }
-    }
-
-    // --- Print Server Response ---
-    Serial.println("--- Server Response ---");
-    while (client.available()) {
-        Serial.write(client.read());
-    }
-    Serial.println("\n-----------------------");
-
-    client.stop();
-    Serial.println("Connection closed.");
+  // The file to upload
+  const char* filename = "/sigma1.wav";
+  uploadFile(filename);
 }
 
 void loop() {
-    // --- Select a file to upload ---
-    // Change this to the actual filename you want to upload from your SD card.
-    const char* fileToUpload = "/test.txt"; 
-    
-    Serial.println("=================================");
-    Serial.print("Starting upload for ");
-    Serial.println(fileToUpload);
-    Serial.println("=================================");
-    
-    uploadFile(fileToUpload);
-    
-    Serial.println("Upload attempt finished. Waiting 30 seconds before next attempt...");
-    delay(30000);
+  // Everything is done in setup for this example
+}
+
+void uploadFile(const char* filename) {
+  file = SD.open(filename, FILE_READ);
+  if (!file) {
+    SerialMon.println("❌ Failed to open file for reading.");
+    return;
+  }
+  
+  long fileSize = file.size();
+  SerialMon.print("📄 File: ");
+  SerialMon.print(filename);
+  SerialMon.print(", Size: ");
+  SerialMon.println(fileSize);
+
+  // Enable HTTPS
+  sendATCommand("AT+CHTTPSSTART", 5000, "OK");
+  
+  // Construct the URL
+  String url = "https://";
+  url += server;
+  url += "/v0/b/";
+  url += storageBucket;
+  url += "/o";
+  url += filename;
+  url += "?uploadType=media&name=";
+  url += &filename[1]; // Remove leading '/' from filename for the name parameter
+  
+  String cmdOpen = "AT+CHTTPSOPSE=\"";
+  cmdOpen += url;
+  cmdOpen += "\",";
+  cmdOpen += "443";
+  sendATCommand(cmdOpen.c_str(), 10000, "OK");
+  
+  // Prepare POST request
+  String cmdPost = "AT+CHTTPSPOST=";
+  cmdPost += fileSize;
+  cmdPost += ",60000,2"; // Timeout, Content-Type format (2=custom)
+  sendATCommand(cmdPost.c_str(), 5000, ">");
+
+  // Send headers
+  String headers = "Content-Type: audio/wav\r\n";
+  SerialAT.print(headers);
+  sendATCommand("", 5000, "OK"); // Wait for OK after headers
+
+  // Wait for the final ">" to start sending data
+  unsigned long start = millis();
+  while (millis() - start < 10000) {
+    if (SerialAT.find(">")) {
+      SerialMon.println("✅ Ready to send data...");
+      break;
+    }
+  }
+
+  // Send the file data
+  byte buffer[256];
+  size_t bytesRead = 0;
+  while ((bytesRead = file.read(buffer, sizeof(buffer))) > 0) {
+    SerialAT.write(buffer, bytesRead);
+  }
+  file.close();
+
+  // Wait for upload confirmation
+  String response = sendATCommand("", 60000, "+CHTTPS: 0"); // Wait for POST to finish
+  if (response.indexOf("+CHTTPS: 0") != -1) {
+    SerialMon.println("✅ Upload successful.");
+  } else {
+    SerialMon.println("❌ Upload failed.");
+  }
+
+  // Close HTTPS session
+  sendATCommand("AT+CHTTPSCLSE", 5000, "OK");
+  sendATCommand("AT+CHTTPSSTOP", 5000, "OK");
 }
