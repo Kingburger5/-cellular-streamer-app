@@ -16,6 +16,7 @@ export interface DataPoint {
   maxTriggerFreq?: number;
   make?: string;
   model?: string;
+  serial?: string;
 }
 
 export interface FileContent {

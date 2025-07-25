@@ -52,7 +52,7 @@ export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, 
   const minFreq = data.length > 0 ? data[0].minTriggerFreq : null;
   const maxFreq = data.length > 0 ? data[0].maxTriggerFreq : null;
   const recordingDate = data.length > 0 ? new Date(data[0].timestamp) : null;
-  const device = data.length > 0 ? { make: data[0].make, model: data[0].model } : null;
+  const device = data.length > 0 ? { make: data[0].make, model: data[0].model, serial: data[0].serial } : null;
 
 
   return (
@@ -119,6 +119,7 @@ export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, 
                     <CardContent>
                         <p className="text-lg font-bold leading-tight">{device.model}</p>
                         <p className="text-sm text-muted-foreground">{device.make}</p>
+                        {device.serial && <p className="text-xs text-muted-foreground mt-1">S/N: {device.serial}</p>}
                     </CardContent>
                 </Card>
             )}
