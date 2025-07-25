@@ -1,226 +1,323 @@
-#include <SoftwareSerial.h>
-#include <SD.h>
 #include <SPI.h>
+#include <SD.h>
+#include "FS.h"
 
-// Essential Pins
-const int SIM7600_TX = 17;
-const int SIM7600_RX = 16;
-const int SD_CS = 5;
+// ESP32-specific: Use HardwareSerial for the modem
+// Serial1 is usually not available on all ESP32 boards (used for flash)
+// We will use Serial2 for the modem
+HardwareSerial modem(2);
 
-// Define the SoftwareSerial for the SIM7600G
-SoftwareSerial simSerial(SIM7600_RX, SIM7600_TX);
+// Define the pins for the SIM7600G module
+#define SIM7600_TX 27
+#define SIM7600_RX 26
 
-// APN for your mobile network provider
-const char APN[] = "internet"; // Replace with your APN
+// Define the Chip Select pin for the SD Card
+#define SD_CS 5
 
-// --- Function to send AT commands and wait for a specific response ---
-String sendATCommand(String cmd, unsigned long timeout, const char* expected_response) {
+// Your network and Firebase configuration
+const char* APN = "internet"; // Replace with your APN
+const char* FIREBASE_HOST = "firebasestorage.googleapis.com";
+const char* BUCKET_NAME = "cellular-data-streamer.appspot.com";
+
+/**
+ * @brief Sends an AT command to the modem and waits for a response.
+ * 
+ * @param command The AT command to send.
+ * @param timeout The time to wait for a response in milliseconds.
+ * @param expected_response The expected successful response string (e.g., "OK", "DOWNLOAD").
+ * @return String The full response from the modem.
+ */
+String sendATCommand(const char* command, unsigned long timeout, const char* expected_response) {
     String response = "";
-    simSerial.println(cmd);
     unsigned long startTime = millis();
-    while ((millis() - startTime) < timeout) {
-        if (simSerial.available()) {
-            char c = simSerial.read();
-            response += c;
-        }
-    }
-    Serial.print(">> " + cmd + "\n" + response);
-    if (response.indexOf(expected_response) == -1) {
-        Serial.println("[ERROR] Timeout or unexpected response.");
-        return "";
-    }
-    return response;
-}
 
-// --- Function to Setup SIM7600G ---
-bool setupSIM7600() {
-    Serial.println("--- Initializing SIM7600G ---");
-    simSerial.begin(115200);
-    delay(1000);
+    Serial.print(">> ");
+    Serial.println(command);
 
-    if (sendATCommand("AT", 2000, "OK") == "") return false;
-    if (sendATCommand("ATE0", 2000, "OK") == "") return false; // Disable command echo
-    if (sendATCommand("AT+CPIN?", 5000, "READY") == "") return false;
-    if (sendATCommand("AT+CSQ", 5000, "OK") == "") return false;
-    if (sendATCommand("AT+CGREG?", 30000, "+CGREG: 0,1") == "" && sendATCommand("AT+CGREG?", 1000, "+CGREG: 0,5") == "") return false;
-    if (sendATCommand("AT+COPS?", 10000, "OK") == "") return false;
-    
-    Serial.println("--- Activating PDP Context ---");
-    String cmd = "AT+CGDCONT=1,\"IP\",\"";
-    cmd += APN;
-    cmd += "\"";
-    if (sendATCommand(cmd, 10000, "OK") == "") return false;
-    if (sendATCommand("AT+NETOPEN", 20000, "Network opened") == "") return false;
-    if (sendATCommand("AT+IPADDR", 10000, "OK") == "") return false;
+    modem.println(command);
 
-    Serial.println("SIM7600G Initialized Successfully.");
-    return true;
-}
-
-// --- Function to upload a file to Firebase Storage ---
-bool uploadFile(String filename) {
-    Serial.println("--- Starting Upload to Firebase ---");
-
-    File file = SD.open(filename.c_str(), FILE_READ);
-    if (!file) {
-        Serial.println("Failed to open file for reading.");
-        return false;
-    }
-    size_t fileSize = file.size();
-    Serial.println("File: " + filename + ", Size: " + String(fileSize) + " bytes");
-
-    // 1. Initialize HTTP Service
-    if (sendATCommand("AT+HTTPINIT", 10000, "OK") == "") {
-        file.close();
-        return false;
-    }
-
-    // 2. Set HTTP Parameters
-    String url = "https://firebasestorage.googleapis.com/v0/b/cellular-data-streamer.appspot.com/o/" + filename + "?uploadType=media&name=" + filename;
-    if (sendATCommand("AT+HTTPPARA=\"URL\",\"" + url + "\"", 10000, "OK") == "") {
-        file.close();
-        sendATCommand("AT+HTTPTERM", 5000, "OK");
-        return false;
-    }
-    if (sendATCommand("AT+HTTPPARA=\"CONTENT\",\"audio/wav\"", 10000, "OK") == "") {
-        file.close();
-        sendATCommand("AT+HTTPTERM", 5000, "OK");
-        return false;
-    }
-
-    // 3. Set HTTP Data
-    if (sendATCommand("AT+HTTPDATA=" + String(fileSize) + ",10000", 10000, "DOWNLOAD") == "") {
-        file.close();
-        sendATCommand("AT+HTTPTERM", 5000, "OK");
-        return false;
-    }
-
-    // 4. Send File Data
-    Serial.println("Sending file data...");
-    byte buffer[256];
-    while (file.available()) {
-        int bytesRead = file.read(buffer, sizeof(buffer));
-        simSerial.write(buffer, bytesRead);
-    }
-    file.close();
-    Serial.println("File data sent.");
-    
-    // Wait for OK after data transfer
-    unsigned long startTime = millis();
-    String response = "";
-    while(millis() - startTime < 15000) { // 15 sec timeout for data post
-        if(simSerial.available()) {
-            response += (char)simSerial.read();
-            if(response.indexOf("OK") != -1) break;
-        }
-    }
-    Serial.println(">> " + response);
-    if(response.indexOf("OK") == -1) {
-       Serial.println("Failed to get OK after sending data.");
-       sendATCommand("AT+HTTPTERM", 5000, "OK");
-       return false;
-    }
-
-
-    // 5. Send POST Request
-    if (sendATCommand("AT+HTTPACTION=1", 30000, "+HTTPACTION: 1,200") == "") {
-        Serial.println("HTTP POST request failed.");
-        sendATCommand("AT+HTTPTERM", 5000, "OK");
-        return false;
-    }
-    
-    Serial.println("File uploaded successfully!");
-    Serial.println("File URL: https://firebasestorage.googleapis.com/v0/b/cellular-data-streamer.appspot.com/o/" + filename + "?alt=media");
-
-
-    // 6. Terminate HTTP Service
-    sendATCommand("AT+HTTPTERM", 5000, "OK");
-    return true;
-}
-
-void setup() {
-    Serial.begin(115200);
-    while (!Serial) {
-        ; // wait for serial port to connect.
-    }
-    Serial.println("--- System Start ---");
-
-    // Initialize SD Card
-    Serial.println("Initializing SD card...");
-    if (!SD.begin(SD_CS)) {
-        Serial.println("SD Card initialization failed!");
-        while (1)
-            ; // Halt
-    }
-    Serial.println("SD card initialized.");
-
-    // List WAV files
-    File root = SD.open("/");
-    if (!root) {
-        Serial.println("Failed to open root directory.");
-        return;
-    }
-
-    String files[20];
-    int fileCount = 0;
-    while (true) {
-        File entry = root.openNextFile();
-        if (!entry) {
-            break; // No more files
-        }
-        if (String(entry.name()).endsWith(".wav") && fileCount < 20) {
-            files[fileCount++] = String(entry.name());
-        }
-        entry.close();
-    }
-    root.close();
-
-    if (fileCount == 0) {
-        Serial.println("No .wav files found on SD card.");
-        while(1);
-    }
-
-    Serial.println("\n--- Available .wav Files ---");
-    for (int i = 0; i < fileCount; i++) {
-        Serial.println(String(i + 1) + ": " + files[i]);
-    }
-    
-    // User selection
-    int choice = -1;
-    Serial.print("\nEnter the number of the file to upload: ");
-    while (choice < 1 || choice > fileCount) {
-        if (Serial.available()) {
-            String input = Serial.readStringUntil('\n');
-            choice = input.toInt();
-            if (choice < 1 || choice > fileCount) {
-                 Serial.print("Invalid choice. Please enter a number between 1 and " + String(fileCount) + ": ");
+    while (millis() - startTime < timeout) {
+        if (modem.available()) {
+            String line = modem.readStringUntil('\n');
+            line.trim();
+            response += line + "\n";
+            if (line.indexOf(expected_response) != -1) {
+                break; 
+            }
+             if (line.indexOf("ERROR") != -1) {
+                break;
             }
         }
     }
     
-    String selectedFile = files[choice - 1];
-    Serial.println("You selected: " + selectedFile);
+    // Clean up the response for better logging
+    response.trim();
+    if (response.length() > 0) {
+      Serial.println(response);
+    } else {
+      Serial.println("[INFO] No response from modem.");
+    }
+    
+    // Check if the final response contains the expected string
+    if (response.indexOf(expected_response) == -1) {
+        Serial.println("[ERROR] Timeout or unexpected response.");
+        response = "ERROR"; // Set response to "ERROR" to indicate failure
+    }
+
+    return response;
+}
 
 
-    // Initialize SIM7600G
+/**
+ * @brief Initializes and prepares the SIM7600G module for communication.
+ * @return bool True if initialization is successful, false otherwise.
+ */
+bool setupSIM7600() {
+    Serial.println("--- Initializing SIM7600G ---");
+
+    if (sendATCommand("AT", 2000, "OK") == "ERROR") return false;
+    if (sendATCommand("ATE0", 2000, "OK") == "ERROR") return false; // Disable command echo
+    if (sendATCommand("AT+CPIN?", 5000, "+CPIN: READY") == "ERROR") return false;
+    if (sendATCommand("AT+CSQ", 5000, "OK") == "ERROR") return false; // Check signal quality
+    
+    // Wait for network registration (up to 30 seconds)
+    unsigned long start = millis();
+    bool registered = false;
+    while (millis() - start < 30000) {
+        String response = sendATCommand("AT+CGREG?", 2000, "OK");
+        if (response.indexOf("+CGREG: 0,1") != -1 || response.indexOf("+CGREG: 0,5") != -1) {
+            Serial.println("[INFO] Registered to network.");
+            registered = true;
+            break;
+        }
+        delay(2000);
+    }
+    if (!registered) {
+       Serial.println("[ERROR] Failed to register to network.");
+       return false;
+    }
+
+    if (sendATCommand("AT+COPS?", 5000, "OK") == "ERROR") return false; // Check operator
+    if (sendATCommand("AT+CGDCONT=1,\"IP\",\"", 5000, "OK") == "ERROR") return false;
+    if (sendATCommand("AT+NETOPEN", 10000, "OK") == "ERROR") return false;
+    if (sendATCommand("AT+IPADDR", 5000, "OK") == "ERROR") return false;
+
+    Serial.println("--- SIM7600G Initialized Successfully ---");
+    return true;
+}
+
+/**
+ * @brief Lists all .wav files in the root directory of the SD card.
+ */
+void listWavFiles() {
+    Serial.println("--- Scanning for .wav files on SD Card ---");
+    File root = SD.open("/");
+    if (!root) {
+        Serial.println("[ERROR] Failed to open root directory.");
+        return;
+    }
+    if (!root.isDirectory()) {
+        Serial.println("[ERROR] Root is not a directory.");
+        return;
+    }
+
+    File file = root.openNextFile();
+    int fileCount = 0;
+    while (file) {
+        if (!file.isDirectory() && String(file.name()).endsWith(".wav")) {
+            fileCount++;
+            Serial.print(fileCount);
+            Serial.print(": ");
+            Serial.print(file.name());
+            Serial.print("  (");
+            Serial.print(file.size());
+            Serial.println(" bytes)");
+        }
+        file.close();
+        file = root.openNextFile();
+    }
+
+    if (fileCount == 0) {
+        Serial.println("No .wav files found.");
+    }
+    root.close();
+}
+
+
+/**
+ * @brief Uploads a specified file from the SD card to Firebase Storage.
+ * 
+ * @param filename The name of the file to upload.
+ */
+void uploadFileToFirebase(const String& filename) {
+    if (!SD.exists(filename)) {
+        Serial.println("[ERROR] File does not exist: " + filename);
+        return;
+    }
+
+    File fileToUpload = SD.open(filename, FILE_READ);
+    if (!fileToUpload) {
+        Serial.println("[ERROR] Failed to open file for reading: " + filename);
+        return;
+    }
+
+    size_t fileSize = fileToUpload.size();
+    Serial.print("--- Starting Upload for: ");
+    Serial.print(filename);
+    Serial.print(", Size: ");
+    Serial.print(fileSize);
+    Serial.println(" bytes ---");
+
+    // 1. Initialize HTTP service
+    if (sendATCommand("AT+HTTPINIT", 5000, "OK") == "ERROR") {
+        fileToUpload.close();
+        return;
+    }
+
+    // 2. Set HTTP parameters
+    String url = "https://";
+    url += FIREBASE_HOST;
+    url += "/v0/b/";
+    url += BUCKET_NAME;
+    url += "/o/";
+    url += filename;
+    url += "?uploadType=media&name=";
+    url += filename;
+
+    String httpUrlCmd = "AT+HTTPPARA=\"URL\",\"" + url + "\"";
+    if (sendATCommand(httpUrlCmd.c_str(), 5000, "OK") == "ERROR") {
+        sendATCommand("AT+HTTPTERM", 3000, "OK");
+        fileToUpload.close();
+        return;
+    }
+    
+    if (sendATCommand("AT+HTTPPARA=\"CONTENT\",\"audio/wav\"", 5000, "OK") == "ERROR") {
+        sendATCommand("AT+HTTPTERM", 3000, "OK");
+        fileToUpload.close();
+        return;
+    }
+
+    // 3. Set HTTP data length and wait for DOWNLOAD prompt
+    String httpDataCmd = "AT+HTTPDATA=" + String(fileSize) + ",10000"; // file size, 10s timeout
+    if (sendATCommand(httpDataCmd.c_str(), 10000, "DOWNLOAD") == "ERROR") {
+        sendATCommand("AT+HTTPTERM", 3000, "OK");
+        fileToUpload.close();
+        return;
+    }
+
+    // 4. Send file data
+    Serial.println("[INFO] Sending file content...");
+    byte buffer[256];
+    size_t bytesRead = 0;
+    while ((bytesRead = fileToUpload.read(buffer, sizeof(buffer))) > 0) {
+        modem.write(buffer, bytesRead);
+    }
+    fileToUpload.close();
+    Serial.println("\n[INFO] File content sent.");
+    
+    // After sending data, wait for OK confirmation from module
+    String dataResponse = modem.readString();
+    if(dataResponse.indexOf("OK") == -1){
+        Serial.println("[ERROR] Did not receive OK after sending file data.");
+        sendATCommand("AT+HTTPTERM", 3000, "OK");
+        return;
+    }
+    
+    // 5. Send POST request
+    if (sendATCommand("AT+HTTPACTION=1", 30000, "+HTTPACTION: 1,200") == "ERROR") {
+         Serial.println("[ERROR] HTTP POST failed or non-200 response.");
+    } else {
+        Serial.println("[SUCCESS] File uploaded successfully!");
+    }
+
+    // 6. Terminate HTTP service
+    sendATCommand("AT+HTTPTERM", 3000, "OK");
+    sendATCommand("AT+NETCLOSE", 5000, "OK");
+    
+    Serial.println("--- Upload Process Finished ---");
+}
+
+/**
+ * @brief Gets the nth .wav filename from the SD card.
+ * 
+ * @param index The 1-based index of the file to find.
+ * @return String The filename, or an empty string if not found.
+ */
+String getWavFilenameByIndex(int index) {
+    File root = SD.open("/");
+    if (!root || !root.isDirectory()) return "";
+
+    File file = root.openNextFile();
+    int count = 0;
+    String filename = "";
+
+    while(file) {
+        if (!file.isDirectory() && String(file.name()).endsWith(".wav")) {
+            count++;
+            if (count == index) {
+                filename = String(file.name());
+                break;
+            }
+        }
+        file.close();
+        file = root.openNextFile();
+    }
+    
+    root.close();
+    return filename;
+}
+
+
+void setup() {
+    // Start Serial Monitor
+    Serial.begin(115200);
+    while (!Serial); // Wait for serial port to connect
+    Serial.println("\n--- ESP32 Cellular Data Logger ---");
+
+    // Initialize the modem serial port
+    modem.begin(115200, SERIAL_8N1, SIM7600_RX, SIM7600_TX);
+    Serial.println("Modem serial initialized.");
+
+    // Initialize SD Card
+    Serial.println("--- Initializing SD Card ---");
+    if (!SD.begin(SD_CS)) {
+        Serial.println("[ERROR] SD Card Mount Failed. Halting.");
+        while (1);
+    }
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.print("SD Card Size: ");
+    Serial.print(cardSize);
+    Serial.println(" MB");
+
+    // Initialize SIM7600
     if (!setupSIM7600()) {
         Serial.println("HALTED: SIM7600G Error.");
         while (1);
     }
 
-    // Upload the selected file
-    if(uploadFile(selectedFile)) {
-        Serial.println("--- Process Complete ---");
-    } else {
-        Serial.println("--- Process Failed ---");
-    }
-    
-    // Cleanup network connection
-    sendATCommand("AT+NETCLOSE", 10000, "OK");
+    // List files and prompt user
+    listWavFiles();
+    Serial.println("\nEnter the number of the file to upload:");
 }
 
 void loop() {
-    // Everything is done in setup, so loop is empty.
-    // You could implement logic to enter a low-power mode here.
-    delay(10000);
+    if (Serial.available()) {
+        String input = Serial.readStringUntil('\n');
+        input.trim();
+        int fileNumber = input.toInt();
+
+        if (fileNumber > 0) {
+            String filenameToUpload = getWavFilenameByIndex(fileNumber);
+            if (filenameToUpload.length() > 0) {
+                Serial.print("Preparing to upload: ");
+                Serial.println(filenameToUpload);
+                uploadFileToFirebase(filenameToUpload);
+            } else {
+                Serial.println("Invalid file number.");
+            }
+        } else {
+            Serial.println("Invalid input. Please enter a number.");
+        }
+         Serial.println("\nEnter the number of the file to upload:");
+    }
 }
