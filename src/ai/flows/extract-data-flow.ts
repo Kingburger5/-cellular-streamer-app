@@ -50,7 +50,7 @@ Your task is to parse this text and extract the relevant data points into a sing
 - The 'Loc Position' field contains both latitude and longitude, separated by a space. You must extract them into the separate 'latitude' and 'longitude' fields.
 - The temperature might be labeled as 'Temperature Int'.
 - The 'Samplerate' field should be extracted as 'sampleRate'.
-- The 'Make', 'Model', and 'Serial' fields should be extracted from their respective key-value pairs (e.g., from 'Make:Wildlife Acoustics, Inc.', extract 'Wildlife Acoustics, Inc.').
+- The 'Make', 'Model', and 'Serial' fields should be extracted from their respective key-value pairs (e.g., from 'Make:Wildlife Acoustics, Inc.', extract 'Wildlife Acoustics, Inc.'). The key for serial number is 'Serial'.
 - The 'Audio settings' field is a JSON string. From this, you must extract 'trig min freq' as 'minTriggerFreq' and 'trig max freq' as 'maxTriggerFreq'.
 - If a field like 'flybys' is not present in the text, you should omit it from the output for that data point.
 - If no parsable data is found, return an empty array for the 'data' field.
