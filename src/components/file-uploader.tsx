@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useCallback } from "react";
@@ -51,22 +52,23 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             const end = Math.min(start + CHUNK_SIZE, file.size);
             const chunk = file.slice(start, end);
 
-            const formData = new FormData();
-            formData.append("chunk", chunk);
-            formData.append("fileIdentifier", fileIdentifier);
-            formData.append("chunkIndex", String(chunkIndex));
-            formData.append("totalChunks", String(totalChunks));
-            formData.append("originalFilename", file.name);
-
             const response = await fetch("/api/upload", {
                 method: "POST",
-                body: formData,
+                headers: {
+                    "Content-Type": "application/octet-stream",
+                    "X-File-ID": fileIdentifier,
+                    "X-Chunk-Index": String(chunkIndex),
+                    "X-Total-Chunks": String(totalChunks),
+                    "X-Original-Filename": file.name,
+                },
+                body: chunk,
             });
 
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || "Chunk upload failed");
             }
+             const result = await response.json();
 
             setUploadProgress(((chunkIndex + 1) / totalChunks) * 100);
         }
