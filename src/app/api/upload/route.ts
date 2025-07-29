@@ -6,26 +6,22 @@ import path from "path";
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
 // A simple in-memory store for chunks.
-// In a production environment, you would use a more robust solution like Redis.
 const chunkStore = new Map<string, Buffer[]>();
 
 // Ensures the upload directory exists.
 async function ensureUploadDirExists() {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  } catch (error) {
-    // This can happen if multiple requests try to create the directory at once.
-    // If the directory exists, we can ignore the error.
-    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
-      return;
+  } catch (error: any) {
+    if (error.code !== 'EEXIST') {
+      console.error("[SERVER] Error creating upload directory:", error);
+      throw new Error("Could not create upload directory.");
     }
-    console.error("Error creating upload directory:", error);
-    throw new Error("Could not create upload directory.");
   }
 }
 
-// Parses the semicolon-separated string from the x-userdata header.
-function parseUserDataHeader(header: string | null): Record<string, string> {
+// Parses the semicolon-separated string from a header.
+function parseHeader(header: string | null): Record<string, string> {
     const result: Record<string, string> = {};
     if (!header) {
         return result;
@@ -46,33 +42,34 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
 export async function POST(request: NextRequest) {
   try {
     await ensureUploadDirExists();
-
+    
+    // The SIM7600G module sends custom data in the 'x-userdata' header.
     const userData = request.headers.get("x-userdata");
-
-    const allHeaders = JSON.stringify(Object.fromEntries(request.headers.entries()));
-    console.log(`[SERVER] Received request with headers: ${allHeaders}`);
-
 
     if (!userData) {
       console.error("[SERVER] Missing 'x-userdata' header.");
       return NextResponse.json({ error: "Missing required x-userdata header." }, { status: 400 });
     }
     
+    const allHeaders = Object.fromEntries(request.headers.entries());
+    console.log(`[SERVER] Received request with headers:`, allHeaders);
     console.log(`[SERVER] Received x-userdata: ${userData}`);
-    const headers = parseUserDataHeader(userData);
     
-    const fileIdentifier = headers["X-File-ID"];
-    const chunkIndexStr = headers["X-Chunk-Index"];
-    const totalChunksStr = headers["X-Total-Chunks"];
-    const originalFilenameUnsafe = headers["X-Original-Filename"];
+    const parsedHeaders = parseHeader(userData);
+    
+    const fileIdentifier = parsedHeaders["X-File-ID"];
+    const chunkIndexStr = parsedHeaders["X-Chunk-Index"];
+    const totalChunksStr = parsedHeaders["X-Total-Chunks"];
+    const originalFilenameUnsafe = parsedHeaders["X-Original-Filename"];
 
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
-      console.error("[SERVER] Missing required fields in parsed x-userdata header.", { headers });
+      console.error("[SERVER] Missing required fields in parsed x-userdata header.", { parsedHeaders });
       return NextResponse.json({ error: "Missing required fields in parsed x-userdata header." }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
+    // Sanitize the filename to prevent directory traversal attacks
     const originalFilename = path.basename(originalFilenameUnsafe);
 
     const chunkBuffer = await request.arrayBuffer();
@@ -82,22 +79,11 @@ export async function POST(request: NextRequest) {
     }
     const buffer = Buffer.from(chunkBuffer);
     
-    // If this is the first chunk, initialize the array for it.
+    // If this is the first chunk for this fileIdentifier, initialize the array for it.
     if (!chunkStore.has(fileIdentifier)) {
         if (chunkIndex === 0) {
-            // Clean up any orphaned part files from previous failed uploads
-            const partFilePath = path.join(UPLOAD_DIR, `${originalFilename}.part`);
-            try {
-                await fs.unlink(partFilePath);
-                console.log(`[SERVER] Deleted orphaned part file: ${partFilePath}`);
-            } catch (error) {
-                if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
-                    console.error(`[SERVER] Error deleting orphaned part file:`, error);
-                }
-            }
             chunkStore.set(fileIdentifier, []);
         } else {
-             // If we receive a chunk for a file we don't know about, and it's not the first chunk, reject it.
             console.error(`[SERVER] Received out-of-order chunk for ${originalFilename}. Rejecting.`);
             return NextResponse.json({ error: "Out-of-order chunk received." }, { status: 400 });
         }
@@ -108,30 +94,29 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SERVER] Stored chunk ${chunkIndex + 1}/${totalChunks} for ${originalFilename} (ID: ${fileIdentifier})`);
 
-    // Use totalChunks - 1 because chunkIndex is 0-based
-    if (chunkIndex === totalChunks - 1) {
+    // If this is the last chunk, assemble the file.
+    if (chunks.length === totalChunks) {
         console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
-        
-        // Verify all chunks are present
-        if (chunks.length !== totalChunks || chunks.some(c => c === undefined)) {
-            console.error(`[SERVER] Missing chunks for ${originalFilename}. Expected ${totalChunks}, got ${chunks.filter(c => c).length}.`);
-            chunkStore.delete(fileIdentifier); // Clean up
-            return NextResponse.json({ error: "Missing chunks, upload failed." }, { status: 400 });
-        }
         
         const fullFileBuffer = Buffer.concat(chunks);
         const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
 
-        await fs.writeFile(finalFilePath, fullFileBuffer);
+        // Write the file asynchronously. We don't need to wait for it to finish.
+        // We'll send the response to the client immediately.
+        fs.writeFile(finalFilePath, fullFileBuffer).then(() => {
+             console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
+             // Clean up the in-memory store for this file
+             chunkStore.delete(fileIdentifier);
+        }).catch(err => {
+            console.error(`[SERVER] Error writing final file ${originalFilename}:`, err);
+            chunkStore.delete(fileIdentifier);
+        });
 
-        console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
-        
-        chunkStore.delete(fileIdentifier);
-
-        return NextResponse.json({ message: "File uploaded successfully.", filename: originalFilename }, { status: 200 });
+        return NextResponse.json({ message: "File upload complete. Processing.", filename: originalFilename }, { status: 200 });
     }
 
-    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received and stored.` }, { status: 200 });
+    // Acknowledge receipt of the chunk.
+    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
 
   } catch (error) {
     console.error("[SERVER] Unhandled error in upload handler:", error);
@@ -142,3 +127,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
