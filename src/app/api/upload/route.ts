@@ -20,13 +20,8 @@ async function ensureUploadDirExists() {
   }
 }
 
-// Parses the semicolon-separated string from a header.
-function parseHeader(header: string | null): Record<string, string> {
+function parseHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
-    if (!header) {
-        return result;
-    }
-
     header.split(';').forEach(pair => {
         const separatorIndex = pair.indexOf(':');
         if (separatorIndex > 0) {
@@ -42,29 +37,29 @@ function parseHeader(header: string | null): Record<string, string> {
 export async function POST(request: NextRequest) {
   try {
     await ensureUploadDirExists();
-    
-    // The SIM7600G module sends custom data in the 'x-userdata' header.
+
     const userData = request.headers.get("x-userdata");
 
     if (!userData) {
       console.error("[SERVER] Missing 'x-userdata' header.");
       return NextResponse.json({ error: "Missing required x-userdata header." }, { status: 400 });
     }
-    
+
     const allHeaders = Object.fromEntries(request.headers.entries());
     console.log(`[SERVER] Received request with headers:`, allHeaders);
     console.log(`[SERVER] Received x-userdata: ${userData}`);
-    
+
     const parsedHeaders = parseHeader(userData);
-    
+
     const fileIdentifier = parsedHeaders["X-File-ID"];
     const chunkIndexStr = parsedHeaders["X-Chunk-Index"];
     const totalChunksStr = parsedHeaders["X-Total-Chunks"];
     const originalFilenameUnsafe = parsedHeaders["X-Original-Filename"];
-
+    
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
-      console.error("[SERVER] Missing required fields in parsed x-userdata header.", { parsedHeaders });
-      return NextResponse.json({ error: "Missing required fields in parsed x-userdata header." }, { status: 400 });
+        const error = "[SERVER] Missing required fields in parsed x-userdata header.";
+        console.error(error, { parsedHeaders });
+        return NextResponse.json({ error: error }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
@@ -74,12 +69,11 @@ export async function POST(request: NextRequest) {
 
     const chunkBuffer = await request.arrayBuffer();
     if (!chunkBuffer || chunkBuffer.byteLength === 0) {
-      console.error("[SERVER] Empty chunk received.");
-      return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
+        console.error("[SERVER] Empty chunk received.");
+        return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
     }
     const buffer = Buffer.from(chunkBuffer);
     
-    // If this is the first chunk for this fileIdentifier, initialize the array for it.
     if (!chunkStore.has(fileIdentifier)) {
         if (chunkIndex === 0) {
             chunkStore.set(fileIdentifier, []);
@@ -90,9 +84,9 @@ export async function POST(request: NextRequest) {
     }
 
     const chunks = chunkStore.get(fileIdentifier)!;
-    chunks[chunkIndex] = buffer;
+    chunks.push(buffer);
 
-    console.log(`[SERVER] Stored chunk ${chunkIndex + 1}/${totalChunks} for ${originalFilename} (ID: ${fileIdentifier})`);
+    console.log(`[SERVER] Stored chunk ${chunks.length}/${totalChunks} for ${originalFilename} (ID: ${fileIdentifier})`);
 
     // If this is the last chunk, assemble the file.
     if (chunks.length === totalChunks) {
@@ -101,8 +95,7 @@ export async function POST(request: NextRequest) {
         const fullFileBuffer = Buffer.concat(chunks);
         const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
 
-        // Write the file asynchronously. We don't need to wait for it to finish.
-        // We'll send the response to the client immediately.
+        // Write the file asynchronously.
         fs.writeFile(finalFilePath, fullFileBuffer).then(() => {
              console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
              // Clean up the in-memory store for this file
@@ -115,8 +108,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: "File upload complete. Processing.", filename: originalFilename }, { status: 200 });
     }
 
-    // Acknowledge receipt of the chunk.
-    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
+    return NextResponse.json({ message: `Chunk ${chunks.length}/${totalChunks} received.` }, { status: 200 });
 
   } catch (error) {
     console.error("[SERVER] Unhandled error in upload handler:", error);
@@ -127,4 +119,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
