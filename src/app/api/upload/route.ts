@@ -19,10 +19,11 @@ function parseUserDataHeader(header: string): Record<string, string> {
 
     const pairs = header.split(';');
     pairs.forEach(pair => {
-        const parts = pair.split(':');
-        if (parts.length === 2) {
-            const key = parts[0].trim().toLowerCase();
-            const value = parts[1].trim();
+        // Find the first colon to split key and value
+        const separatorIndex = pair.indexOf(':');
+        if (separatorIndex > 0) {
+            const key = pair.substring(0, separatorIndex).trim().toLowerCase();
+            const value = pair.substring(separatorIndex + 1).trim();
             result[key] = value;
         }
     });
@@ -33,13 +34,31 @@ export async function POST(request: NextRequest) {
   try {
     await ensureUploadDirExists();
     console.log("[SERVER] Received upload request.");
+
+    let userData = null;
+    let foundHeaderKey = null;
+
+    // Log all headers to find our custom one
+    console.log("[SERVER] All incoming headers:");
+    request.headers.forEach((value, key) => {
+        console.log(`- ${key}: ${value}`);
+        // The SIM7600 might be sending USERDATA as the key or part of it
+        if (key.toLowerCase().includes('userdata') || value.includes('X-File-ID')) {
+            userData = value;
+            foundHeaderKey = key;
+        }
+    });
     
-    // Read the custom semicolon-delimited header string
-    const userData = request.headers.get("userdata") || request.headers.get("USERDATA");
-    console.log(`[SERVER] Raw USERDATA header: ${userData}`);
+    if (userData) {
+         console.log(`[SERVER] Found custom header string in key '${foundHeaderKey}': ${userData}`);
+    } else {
+        // Fallback for some modules that might use a standard header name
+        userData = request.headers.get("x-userdata");
+        if(userData) console.log("[SERVER] Found custom header in 'x-userdata'");
+    }
 
     if (!userData) {
-        return NextResponse.json({ error: "Missing USERDATA header." }, { status: 400 });
+        return NextResponse.json({ error: "Missing USERDATA or equivalent custom header." }, { status: 400 });
     }
     
     // Parse the custom header string
@@ -54,8 +73,8 @@ export async function POST(request: NextRequest) {
     console.log(`[SERVER] Parsed Headers: x-file-id=${fileIdentifier}, x-chunk-index=${chunkIndexStr}, x-total-chunks=${totalChunksStr}, x-original-filename=${originalFilename}`);
 
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
-      console.error("[SERVER] Missing required fields in USERDATA header.");
-      return NextResponse.json({ error: "Missing required fields in USERDATA header." }, { status: 400 });
+      console.error("[SERVER] Missing required fields in parsed USERDATA header.");
+      return NextResponse.json({ error: "Missing required fields in parsed USERDATA header." }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
