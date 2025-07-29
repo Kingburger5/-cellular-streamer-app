@@ -91,7 +91,7 @@ export default function DebugPage() {
                                         </div>
                                         <div>
                                             <Badge variant={getStatusVariant(uploads[key])}>
-                                                {uploads[key].error ? 'Failed' : 'In Progress'}
+                                                {uploads[key].error ? 'Failed' : uploads[key].status.toLowerCase().includes('complete') ? 'Complete' : 'In Progress'}
                                             </Badge>
                                         </div>
                                     </div>
