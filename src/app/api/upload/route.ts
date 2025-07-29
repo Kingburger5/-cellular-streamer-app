@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
     const fileIdentifier = request.headers.get("x-file-id");
     const chunkIndexStr = request.headers.get("x-chunk-index");
     const totalChunksStr = request.headers.get("x-total-chunks");
-    const originalFilename = request.headers.get("x-original-filename");
+    // Be flexible with the header name for original filename
+    const originalFilename = request.headers.get("x-original-filename") || request.headers.get("x-original-name");
 
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
       return NextResponse.json({ error: "Missing required headers." }, { status: 400 });
