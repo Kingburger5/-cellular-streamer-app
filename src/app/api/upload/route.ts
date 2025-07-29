@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
     console.log(`[SERVER] Received x-userdata: ${userData}`);
 
     const parsedHeaders = parseUserDataHeader(userData);
+    console.log(`[SERVER] Parsed userdata:`, parsedHeaders);
 
     // Access keys in lowercase, as the parser now stores them that way.
     const fileIdentifier = parsedHeaders["x-file-id"];
