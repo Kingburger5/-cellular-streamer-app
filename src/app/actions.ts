@@ -2,11 +2,10 @@
 "use server";
 
 import { adminApp } from "@/lib/firebase-admin";
-import { getStorage } from "firebase-admin/storage";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
-const bucket = getStorage(adminApp).bucket();
+const bucket = adminApp.storage().bucket();
 
 export async function getFilesAction(): Promise<UploadedFile[]> {
   try {

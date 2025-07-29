@@ -1,10 +1,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminApp } from "@/lib/firebase-admin";
-import { getStorage } from "firebase-admin/storage";
 import { PassThrough } from "stream";
 
-const bucket = getStorage(adminApp).bucket();
+const bucket = adminApp.storage().bucket();
 
 function parseUserDataHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -76,46 +75,65 @@ export async function POST(request: NextRequest) {
 
     const file = bucket.file(originalFilename);
 
-    if (chunkIndex === 0) {
-        // This is the first chunk, we start a new upload stream
-        console.log(`[SERVER] Starting new upload for ${originalFilename}.`);
-        const stream = file.createWriteStream({
-            metadata: {
-                contentType: 'application/octet-stream',
-            },
-            resumable: false,
-        });
-        stream.write(buffer);
-        // For the first chunk, we just write and wait for the next
-    } else {
-        // For subsequent chunks, we need to append. This is tricky with GCS.
-        // The most robust way is to download existing chunks, append new one, and re-upload.
-        // A simpler, though less efficient method, is to use compose for many small chunks,
-        // but for now, we'll try a direct append approach which might have issues with some file types.
-        // A truly robust solution would require temporary local storage or a more complex GCS compose strategy.
-        
-        // Let's try appending via a stream. This assumes the file exists from chunk 0.
-        const passthroughStream = new PassThrough();
-        passthroughStream.write(buffer);
-        passthroughStream.end();
+    // Create a write stream to the file in Firebase Storage.
+    // This will either create the file or append to it if it already exists.
+    // For chunked uploads, we rely on the client to send chunks in order.
+    // GCS doesn't have a simple "append" so we manage this by streaming.
+    const stream = file.createWriteStream({
+        metadata: {
+            contentType: 'application/octet-stream',
+        },
+        // We can't make this resumable in the same way as a single upload,
+        // so we manage chunks ourselves.
+        resumable: false, 
+    });
 
-        const [existingFile] = await bucket.file(originalFilename).get();
-        const existingStream = existingFile.createReadStream();
-        
-        const newFileStream = bucket.file(originalFilename).createWriteStream();
-        
-        existingStream.pipe(newFileStream, { end: false });
-        existingStream.on('end', () => {
-            passthroughStream.pipe(newFileStream);
-        });
-    }
+    const passthrough = new PassThrough();
+    passthrough.write(buffer);
+    passthrough.end();
+
+    // The logic for appending is simplified here. A robust implementation
+    // for parallel uploads would require composing parts. For serial chunks,
+    // we can manage the stream. On chunk 0, we start new. On others, we would
+    // ideally append. GCS write streams overwrite by default.
+    // The correct way to handle this is to write chunks to temporary files
+    // and then compose them at the end.
+
+    // Let's try a simplified approach first. If it is chunk 0, just write.
+    // If it's a subsequent chunk, we have an issue because we can't easily append.
+    // Let's adjust the logic to handle this. We will have to write to temporary
+    // chunk files in storage and then compose them.
+
+    const tempChunkFile = bucket.file(`tmp/${originalFilename}.${chunkIndex}`);
+    await tempChunkFile.save(buffer);
+    console.log(`[SERVER] Saved chunk ${chunkIndex} to temporary file.`);
 
     if (chunkIndex === totalChunks - 1) {
-      console.log(`[SERVER] Final chunk received for ${originalFilename}. Upload should be complete.`);
-      return NextResponse.json({ message: "File uploaded successfully.", filename: originalFilename }, { status: 200 });
+        console.log(`[SERVER] Final chunk received for ${originalFilename}. Composing file...`);
+        
+        const tempChunkFiles = [];
+        for (let i = 0; i < totalChunks; i++) {
+            tempChunkFiles.push(bucket.file(`tmp/${originalFilename}.${i}`));
+        }
+
+        // Check if all chunks exist before composing
+        const allChunksExist = await Promise.all(tempChunkFiles.map(f => f.exists()));
+        if(allChunksExist.some(e => !e[0])) {
+             console.error("[SERVER] Missing some temporary chunks, cannot compose file.");
+             return NextResponse.json({ error: "Missing some chunks, cannot compose file." }, { status: 500 });
+        }
+        
+        await bucket.combine(tempChunkFiles, bucket.file(originalFilename));
+        console.log(`[SERVER] Successfully composed ${originalFilename}.`);
+
+        // Clean up temporary chunk files
+        await Promise.all(tempChunkFiles.map(f => f.delete()));
+        console.log(`[SERVER] Deleted temporary chunk files for ${originalFilename}.`);
+
+        return NextResponse.json({ message: "File uploaded and composed successfully.", filename: originalFilename }, { status: 200 });
     }
 
-    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
+    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received and stored.` }, { status: 200 });
 
   } catch (error) {
     console.error("[SERVER] Upload error:", error);
