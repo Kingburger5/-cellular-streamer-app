@@ -9,7 +9,7 @@ async function ensureUploadDirExists() {
   try {
     await fs.access(UPLOAD_DIR);
   } catch {
-    await fs.mkdir(UPLOAD_dDIR, { recursive: true });
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
   }
 }
 
