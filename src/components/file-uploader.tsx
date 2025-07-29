@@ -21,13 +21,6 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-    }
-  };
-
   const resetState = useCallback(() => {
     setFile(null);
     setUploadProgress(0);
@@ -36,6 +29,13 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
         fileInputRef.current.value = "";
     }
   }, []);
+  
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      setFile(files[0]);
+    }
+  };
 
   const uploadFileInChunks = useCallback(async () => {
     if (!file) return;
@@ -44,6 +44,7 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
     setUploadProgress(0);
 
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    // Use a unique file identifier based on file properties
     const fileIdentifier = `${file.name}-${file.size}-${file.lastModified}`;
     
     try {
@@ -51,13 +52,16 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             const start = chunkIndex * CHUNK_SIZE;
             const end = Math.min(start + CHUNK_SIZE, file.size);
             const chunk = file.slice(start, end);
-
+            
+            // This header format now matches what the Arduino device sends.
             const userData = `X-File-ID: ${fileIdentifier}; X-Chunk-Index: ${chunkIndex}; X-Total-Chunks: ${totalChunks}; X-Original-Filename: ${file.name}`;
 
             const response = await fetch("/api/upload", {
                 method: "POST",
                 headers: {
+                    // This is a standard header, but our server uses a custom one for consistency.
                     "Content-Type": "application/octet-stream",
+                    // Custom header that bundles all metadata.
                     "x-userdata": userData,
                 },
                 body: chunk,
@@ -71,7 +75,7 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             setUploadProgress(((chunkIndex + 1) / totalChunks) * 100);
         }
         
-        // Give server a moment to process the final chunk
+        // Give server a moment to process the final chunk and save the file
         setTimeout(() => {
             onUploadComplete();
             resetState();
