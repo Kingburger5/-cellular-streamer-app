@@ -20,23 +20,6 @@ async function ensureUploadDirExists() {
   }
 }
 
-// This parser handles case-insensitivity by converting all keys to lowercase.
-function parseUserDataHeader(header: string): Record<string, string> {
-    const result: Record<string, string> = {};
-    if (!header) return result;
-
-    header.split(';').forEach(pair => {
-        const parts = pair.split(/:(.*)/s); // Split only on the first colon
-        if (parts.length === 2) {
-            const key = parts[0].trim().toLowerCase(); // Lowercase the key
-            const value = parts[1].trim();
-            result[key] = value;
-        }
-    });
-    return result;
-}
-
-
 export async function POST(request: NextRequest) {
   try {
     console.log("\n--- [SERVER] New POST request received ---");
@@ -45,19 +28,30 @@ export async function POST(request: NextRequest) {
     const allHeaders = Object.fromEntries(request.headers.entries());
     console.log("[SERVER] All Request Headers:", allHeaders);
     
-    const userData = request.headers.get("x-userdata");
+    // All headers are lowercased by Next.js
+    const userDataHeader = request.headers.get("x-userdata");
 
-    if (!userData) {
+    if (!userDataHeader) {
       console.error("[SERVER] FATAL: Missing 'x-userdata' header.");
       return NextResponse.json({ error: "Missing required x-userdata header." }, { status: 400 });
     }
     
-    console.log(`[SERVER] Raw x-userdata header: "${userData}"`);
+    console.log(`[SERVER] Raw x-userdata header: "${userDataHeader}"`);
 
-    const parsedHeaders = parseUserDataHeader(userData);
+    // Robustly parse the userdata header string
+    const parsedHeaders: Record<string, string> = {};
+    userDataHeader.split(';').forEach(part => {
+        const firstColonIndex = part.indexOf(':');
+        if (firstColonIndex !== -1) {
+            const key = part.substring(0, firstColonIndex).trim().toLowerCase();
+            const value = part.substring(firstColonIndex + 1).trim();
+            parsedHeaders[key] = value;
+        }
+    });
+
     console.log("[SERVER] Parsed userdata object:", parsedHeaders);
 
-    // Access keys in lowercase, as the parser now stores them that way.
+    // Access keys in lowercase
     const fileIdentifier = parsedHeaders["x-file-id"];
     const chunkIndexStr = parsedHeaders["x-chunk-index"];
     const totalChunksStr = parsedHeaders["x-total-chunks"];
@@ -66,7 +60,7 @@ export async function POST(request: NextRequest) {
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
         const error = "[SERVER] FATAL: Missing one or more required fields in parsed x-userdata header.";
         console.error(error, { parsedHeaders });
-        return NextResponse.json({ error: error }, { status: 400 });
+        return NextResponse.json({ error: "Could not parse required fields from x-userdata header." }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
@@ -93,7 +87,6 @@ export async function POST(request: NextRequest) {
       console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
       const fullFileBuffer = Buffer.concat(chunks);
       
-      // Sanitize the filename to prevent directory traversal issues
       const safeFilename = path.basename(originalFilename);
       const finalFilePath = path.join(UPLOAD_DIR, safeFilename);
 
