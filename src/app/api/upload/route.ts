@@ -14,11 +14,9 @@ async function ensureUploadDirExists() {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
   } catch (error) {
-    // If the directory already exists, we can ignore the error.
     if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
       return;
     }
-    // For any other error, log it and re-throw.
     console.error("Error creating upload directory:", error);
     throw new Error("Could not create upload directory.");
   }
@@ -44,15 +42,11 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
 
 
 export async function POST(request: NextRequest) {
-  // Wrap the entire handler in a try...catch block to prevent server crashes.
   try {
-    // Ensure the upload directory exists before doing anything else.
     await ensureUploadDirExists();
 
-    // The SIM7600G sends custom metadata in the 'x-userdata' header.
     const userData = request.headers.get("x-userdata");
 
-    // Log all headers for debugging purposes.
     const allHeaders = JSON.stringify(Object.fromEntries(request.headers.entries()));
     console.log(`[SERVER] Received request with headers: ${allHeaders}`);
 
@@ -77,7 +71,6 @@ export async function POST(request: NextRequest) {
 
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
-    // Sanitize the filename to prevent directory traversal attacks.
     const originalFilename = path.basename(originalFilenameUnsafe);
 
     const chunkBuffer = await request.arrayBuffer();
@@ -87,19 +80,23 @@ export async function POST(request: NextRequest) {
     }
     const buffer = Buffer.from(chunkBuffer);
     
-    // Initialize the chunk array for this file if it's the first chunk.
     if (!chunkStore.has(fileIdentifier)) {
-        // If this is the first chunk, delete any orphaned part files from previous failed uploads.
-        const partFilePath = path.join(UPLOAD_DIR, `${originalFilename}.part`);
-         try {
-            await fs.unlink(partFilePath);
-            console.log(`[SERVER] Deleted orphaned part file: ${partFilePath}`);
-        } catch (error) {
-            if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
-                console.error(`[SERVER] Error deleting orphaned part file:`, error);
+        if (chunkIndex === 0) {
+            const partFilePath = path.join(UPLOAD_DIR, `${originalFilename}.part`);
+            try {
+                await fs.unlink(partFilePath);
+                console.log(`[SERVER] Deleted orphaned part file: ${partFilePath}`);
+            } catch (error) {
+                if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
+                    console.error(`[SERVER] Error deleting orphaned part file:`, error);
+                }
             }
+            chunkStore.set(fileIdentifier, []);
+        } else {
+             // If we receive a chunk for a file we don't know about, and it's not the first chunk, reject it.
+            console.error(`[SERVER] Received out-of-order chunk for ${originalFilename}. Rejecting.`);
+            return NextResponse.json({ error: "Out-of-order chunk received." }, { status: 400 });
         }
-        chunkStore.set(fileIdentifier, []);
     }
 
     const chunks = chunkStore.get(fileIdentifier)!;
@@ -107,9 +104,16 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SERVER] Stored chunk ${chunkIndex + 1}/${totalChunks} for ${originalFilename} (ID: ${fileIdentifier})`);
 
-    // If all chunks have been received...
-    if (chunks.length === totalChunks && chunks.every(c => c !== undefined)) {
+    // Use totalChunks - 1 because chunkIndex is 0-based
+    if (chunkIndex === totalChunks - 1) {
         console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
+        
+        // Verify all chunks are present
+        if (chunks.length !== totalChunks || chunks.some(c => c === undefined)) {
+            console.error(`[SERVER] Missing chunks for ${originalFilename}. Expected ${totalChunks}, got ${chunks.filter(c => c).length}.`);
+            chunkStore.delete(fileIdentifier); // Clean up
+            return NextResponse.json({ error: "Missing chunks, upload failed." }, { status: 400 });
+        }
         
         const fullFileBuffer = Buffer.concat(chunks);
         const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
@@ -118,17 +122,14 @@ export async function POST(request: NextRequest) {
 
         console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
         
-        // Clean up the in-memory chunk store for this file.
         chunkStore.delete(fileIdentifier);
 
         return NextResponse.json({ message: "File uploaded successfully.", filename: originalFilename }, { status: 200 });
     }
 
-    // If not all chunks are received yet, just acknowledge the reception of the chunk.
     return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received and stored.` }, { status: 200 });
 
   } catch (error) {
-    // If any error occurs, log it and return a generic 500 error.
     console.error("[SERVER] Unhandled error in upload handler:", error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
     return NextResponse.json(
