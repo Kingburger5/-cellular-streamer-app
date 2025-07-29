@@ -89,18 +89,22 @@ export async function POST(request: NextRequest) {
     if (chunks.length === totalChunks) {
       console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
       const fullFileBuffer = Buffer.concat(chunks);
-      const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
+      
+      // Sanitize the filename to prevent directory traversal issues
+      const safeFilename = path.basename(originalFilename);
+      const finalFilePath = path.join(UPLOAD_DIR, safeFilename);
+
 
       // Asynchronously write file and don't await it to send response faster
       fs.writeFile(finalFilePath, fullFileBuffer).then(() => {
-          console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
+          console.log(`[SERVER] Successfully saved ${safeFilename} to ${finalFilePath}.`);
           chunkStore.delete(fileIdentifier);
       }).catch(err => {
-          console.error(`[SERVER] Error writing final file ${originalFilename}:`, err);
+          console.error(`[SERVER] Error writing final file ${safeFilename}:`, err);
           chunkStore.delete(fileIdentifier);
       });
 
-      return NextResponse.json({ message: "File upload complete. Processing.", filename: originalFilename }, { status: 200 });
+      return NextResponse.json({ message: "File upload complete. Processing.", filename: safeFilename }, { status: 200 });
     }
 
     return NextResponse.json({ message: `Chunk ${chunks.length}/${totalChunks} received.` }, { status: 200 });
