@@ -14,6 +14,8 @@ async function ensureUploadDirExists() {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
   } catch (error) {
+    // This can happen if multiple requests try to create the directory at once.
+    // If the directory exists, we can ignore the error.
     if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
       return;
     }
@@ -80,8 +82,10 @@ export async function POST(request: NextRequest) {
     }
     const buffer = Buffer.from(chunkBuffer);
     
+    // If this is the first chunk, initialize the array for it.
     if (!chunkStore.has(fileIdentifier)) {
         if (chunkIndex === 0) {
+            // Clean up any orphaned part files from previous failed uploads
             const partFilePath = path.join(UPLOAD_DIR, `${originalFilename}.part`);
             try {
                 await fs.unlink(partFilePath);
