@@ -19,7 +19,6 @@ function parseUserDataHeader(header: string): Record<string, string> {
 
     const pairs = header.split(';');
     pairs.forEach(pair => {
-        // Find the first colon to split key and value
         const separatorIndex = pair.indexOf(':');
         if (separatorIndex > 0) {
             const key = pair.substring(0, separatorIndex).trim().toLowerCase();
@@ -38,7 +37,6 @@ export async function POST(request: NextRequest) {
     let userData = null;
     let foundHeaderKey = null;
 
-    // Log all headers to find our custom one
     console.log("[SERVER] All incoming headers:");
     request.headers.forEach((value, key) => {
         console.log(`- ${key}: ${value}`);
@@ -61,13 +59,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Missing USERDATA or equivalent custom header." }, { status: 400 });
     }
     
-    // Parse the custom header string
     const headers = parseUserDataHeader(userData);
     
     const fileIdentifier = headers["x-file-id"];
     const chunkIndexStr = headers["x-chunk-index"];
     const totalChunksStr = headers["x-total-chunks"];
-    const originalFilename = headers["x-original-filename"];
+    let originalFilename = headers["x-original-filename"];
 
 
     console.log(`[SERVER] Parsed Headers: x-file-id=${fileIdentifier}, x-chunk-index=${chunkIndexStr}, x-total-chunks=${totalChunksStr}, x-original-filename=${originalFilename}`);
@@ -80,7 +77,6 @@ export async function POST(request: NextRequest) {
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
 
-    // Read raw binary data from the request body
     const chunkBuffer = await request.arrayBuffer();
     if (!chunkBuffer || chunkBuffer.byteLength === 0) {
       console.error("[SERVER] Empty chunk received.");
@@ -89,11 +85,23 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(chunkBuffer);
     console.log(`[SERVER] Received chunk ${chunkIndex + 1}/${totalChunks} with size ${buffer.length} bytes.`);
 
-
     // Sanitize filename to prevent directory traversal
     const safeFilename = path.basename(originalFilename);
     const tempFilePath = path.join(UPLOAD_DIR, `${fileIdentifier}.part`);
 
+    // **CLEANUP LOGIC**: If this is the first chunk, delete any stale .part file.
+    if (chunkIndex === 0) {
+        try {
+            await fs.unlink(tempFilePath);
+            console.log(`[SERVER] Deleted stale part file: ${tempFilePath}`);
+        } catch (error: any) {
+            if (error.code !== 'ENOENT') { // Ignore "file not found" errors
+                console.error(`[SERVER] Error deleting stale part file:`, error);
+                throw error;
+            }
+        }
+    }
+    
     await fs.appendFile(tempFilePath, buffer);
     console.log(`[SERVER] Appended chunk ${chunkIndex + 1} to ${tempFilePath}`);
 
@@ -101,14 +109,19 @@ export async function POST(request: NextRequest) {
       // Last chunk, rename the file
       const finalFilePath = path.join(UPLOAD_DIR, safeFilename);
       try {
-        await fs.access(finalFilePath);
-        console.warn(`[SERVER] File ${finalFilePath} already exists. Overwriting.`);
-        await fs.unlink(finalFilePath);
-      } catch {
-        // File doesn't exist, which is fine
+        // Overwrite final file if it exists
+        await fs.rename(tempFilePath, finalFilePath);
+        console.log(`[SERVER] File upload completed. Renamed ${tempFilePath} to ${finalFilePath}`);
+      } catch (renameError) {
+          console.error('[SERVER] Error renaming file:', renameError);
+          // Try to clean up the part file on failure
+          try {
+            await fs.unlink(tempFilePath);
+          } catch (cleanupError) {
+             console.error('[SERVER] Error cleaning up part file after failed rename:', cleanupError);
+          }
+          throw renameError;
       }
-      await fs.rename(tempFilePath, finalFilePath);
-      console.log(`[SERVER] File upload completed. Renamed ${tempFilePath} to ${finalFilePath}`);
       return NextResponse.json({ message: "File uploaded successfully.", filename: safeFilename }, { status: 200 });
     }
 
