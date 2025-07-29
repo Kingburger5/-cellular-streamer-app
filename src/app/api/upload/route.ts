@@ -15,25 +15,32 @@ async function ensureUploadDirExists() {
 export async function POST(request: NextRequest) {
   try {
     await ensureUploadDirExists();
-    const formData = await request.formData();
-    const chunk = formData.get("chunk") as File | null;
-    const fileIdentifier = formData.get("fileIdentifier") as string | null;
-    const chunkIndexStr = formData.get("chunkIndex") as string | null;
-    const totalChunksStr = formData.get("totalChunks") as string | null;
-    const originalFilename = formData.get("originalFilename") as string | null;
 
-    if (!chunk || !fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
-      return NextResponse.json({ error: "Missing required form data." }, { status: 400 });
+    // Read metadata from custom headers
+    const fileIdentifier = request.headers.get("x-file-id");
+    const chunkIndexStr = request.headers.get("x-chunk-index");
+    const totalChunksStr = request.headers.get("x-total-chunks");
+    const originalFilename = request.headers.get("x-original-filename");
+
+    if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
+      return NextResponse.json({ error: "Missing required headers." }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
 
+    // Read raw binary data from the request body
+    const chunkBuffer = await request.arrayBuffer();
+    if (!chunkBuffer || chunkBuffer.byteLength === 0) {
+        return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
+    }
+    const buffer = Buffer.from(chunkBuffer);
+
+
     // Sanitize filename to prevent directory traversal
     const safeFilename = path.basename(originalFilename);
     const tempFilePath = path.join(UPLOAD_DIR, `${fileIdentifier}.part`);
 
-    const buffer = Buffer.from(await chunk.arrayBuffer());
     await fs.appendFile(tempFilePath, buffer);
 
     if (chunkIndex === totalChunks - 1) {
