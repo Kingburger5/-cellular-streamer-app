@@ -11,9 +11,12 @@ const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 // Helper to ensure upload directory exists
 async function ensureUploadDirExists() {
   try {
-    await fs.access(UPLOAD_DIR);
-  } catch {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  } catch (error: any) {
+    if (error.code !== 'EEXIST') {
+      console.error("Error creating upload directory:", error);
+      throw error;
+    }
   }
 }
 
@@ -38,7 +41,6 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
     return filesWithStats;
   } catch (error) {
     console.error("Error reading files from upload directory:", error);
-    // If the directory doesn't exist, it's not an error, just return empty.
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
         return [];
     }
@@ -48,35 +50,25 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 
 
 function findReadableStrings(buffer: Buffer): string | null {
-    let longestString = "";
-    let currentString = "";
-    const isPrintable = (char: number) => (char >= 32 && char <= 126) || char === 10 || char === 13;
+    const guanoKeyword = Buffer.from("GUANO");
+    const guanoIndex = buffer.indexOf(guanoKeyword);
 
-    for (let i = 0; i < buffer.length; i++) {
-        const charCode = buffer[i];
-        if (isPrintable(charCode)) {
-            currentString += String.fromCharCode(charCode);
-        } else {
-            if (currentString.includes("GUANO")) {
-                 if (currentString.length > longestString.length) {
-                    longestString = currentString;
-                }
-            }
-            currentString = "";
-        }
+    if (guanoIndex === -1) {
+        return null;
     }
-    if (currentString.includes("GUANO")) {
-        if (currentString.length > longestString.length) {
-            longestString = currentString;
+
+    // Search for the end of the metadata block, which we'll assume is a null terminator or series of non-printable chars
+    let endIndex = guanoIndex + guanoKeyword.length;
+    while(endIndex < buffer.length) {
+        const charCode = buffer[endIndex];
+        // Stop at the first non-printable character (excluding newline/carriage return)
+        if ( (charCode < 32 || charCode > 126) && charCode !== 10 && charCode !== 13) {
+            break;
         }
+        endIndex++;
     }
     
-    if (longestString.includes("GUANO")) {
-        const guanoIndex = longestString.indexOf("GUANO");
-        return longestString.substring(guanoIndex).trim();
-    }
-    
-    return longestString || null;
+    return buffer.toString('utf-8', guanoIndex, endIndex).trim();
 }
 
 

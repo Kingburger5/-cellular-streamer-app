@@ -20,13 +20,14 @@ async function ensureUploadDirExists() {
   }
 }
 
-function parseHeader(header: string): Record<string, string> {
+// Simplified and more robust header parser
+function parseUserDataHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
     header.split(';').forEach(pair => {
-        const separatorIndex = pair.indexOf(':');
-        if (separatorIndex > 0) {
-            const key = pair.substring(0, separatorIndex).trim();
-            const value = pair.substring(separatorIndex + 1).trim();
+        const parts = pair.split(':');
+        if (parts.length === 2) {
+            const key = parts[0].trim();
+            const value = parts[1].trim();
             result[key] = value;
         }
     });
@@ -38,18 +39,19 @@ export async function POST(request: NextRequest) {
   try {
     await ensureUploadDirExists();
 
+    const allHeaders = Object.fromEntries(request.headers.entries());
+    console.log(`[SERVER] Received request with headers:`, allHeaders);
+    
     const userData = request.headers.get("x-userdata");
 
     if (!userData) {
       console.error("[SERVER] Missing 'x-userdata' header.");
       return NextResponse.json({ error: "Missing required x-userdata header." }, { status: 400 });
     }
-
-    const allHeaders = Object.fromEntries(request.headers.entries());
-    console.log(`[SERVER] Received request with headers:`, allHeaders);
+    
     console.log(`[SERVER] Received x-userdata: ${userData}`);
 
-    const parsedHeaders = parseHeader(userData);
+    const parsedHeaders = parseUserDataHeader(userData);
 
     const fileIdentifier = parsedHeaders["X-File-ID"];
     const chunkIndexStr = parsedHeaders["X-Chunk-Index"];
@@ -64,7 +66,6 @@ export async function POST(request: NextRequest) {
 
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
-    // Sanitize the filename to prevent directory traversal attacks
     const originalFilename = path.basename(originalFilenameUnsafe);
 
     const chunkBuffer = await request.arrayBuffer();
@@ -75,12 +76,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(chunkBuffer);
     
     if (!chunkStore.has(fileIdentifier)) {
-        if (chunkIndex === 0) {
-            chunkStore.set(fileIdentifier, []);
-        } else {
-            console.error(`[SERVER] Received out-of-order chunk for ${originalFilename}. Rejecting.`);
-            return NextResponse.json({ error: "Out-of-order chunk received." }, { status: 400 });
-        }
+        chunkStore.set(fileIdentifier, []);
     }
 
     const chunks = chunkStore.get(fileIdentifier)!;
@@ -88,24 +84,21 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SERVER] Stored chunk ${chunks.length}/${totalChunks} for ${originalFilename} (ID: ${fileIdentifier})`);
 
-    // If this is the last chunk, assemble the file.
     if (chunks.length === totalChunks) {
-        console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
-        
-        const fullFileBuffer = Buffer.concat(chunks);
-        const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
+      console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
+      const fullFileBuffer = Buffer.concat(chunks);
+      const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
 
-        // Write the file asynchronously.
-        fs.writeFile(finalFilePath, fullFileBuffer).then(() => {
-             console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
-             // Clean up the in-memory store for this file
-             chunkStore.delete(fileIdentifier);
-        }).catch(err => {
-            console.error(`[SERVER] Error writing final file ${originalFilename}:`, err);
-            chunkStore.delete(fileIdentifier);
-        });
+      // Asynchronously write file and don't await it to send response faster
+      fs.writeFile(finalFilePath, fullFileBuffer).then(() => {
+          console.log(`[SERVER] Successfully saved ${originalFilename} to ${finalFilePath}.`);
+          chunkStore.delete(fileIdentifier);
+      }).catch(err => {
+          console.error(`[SERVER] Error writing final file ${originalFilename}:`, err);
+          chunkStore.delete(fileIdentifier);
+      });
 
-        return NextResponse.json({ message: "File upload complete. Processing.", filename: originalFilename }, { status: 200 });
+      return NextResponse.json({ message: "File upload complete. Processing.", filename: originalFilename }, { status: 200 });
     }
 
     return NextResponse.json({ message: `Chunk ${chunks.length}/${totalChunks} received.` }, { status: 200 });

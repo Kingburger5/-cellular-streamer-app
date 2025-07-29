@@ -52,14 +52,13 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             const end = Math.min(start + CHUNK_SIZE, file.size);
             const chunk = file.slice(start, end);
 
+            const userData = `X-File-ID: ${fileIdentifier}; X-Chunk-Index: ${chunkIndex}; X-Total-Chunks: ${totalChunks}; X-Original-Filename: ${file.name}`;
+
             const response = await fetch("/api/upload", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/octet-stream",
-                    "X-File-ID": fileIdentifier,
-                    "X-Chunk-Index": String(chunkIndex),
-                    "X-Total-Chunks": String(totalChunks),
-                    "X-Original-Filename": file.name,
+                    "x-userdata": userData,
                 },
                 body: chunk,
             });
@@ -68,13 +67,16 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || "Chunk upload failed");
             }
-             const result = await response.json();
 
             setUploadProgress(((chunkIndex + 1) / totalChunks) * 100);
         }
         
-        onUploadComplete();
-        resetState();
+        // Give server a moment to process the final chunk
+        setTimeout(() => {
+            onUploadComplete();
+            resetState();
+        }, 1000);
+
 
     } catch (error) {
         console.error("Upload failed:", error);

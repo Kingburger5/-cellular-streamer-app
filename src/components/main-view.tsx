@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useTransition, useCallback, useEffect } from "react";
@@ -39,38 +38,9 @@ export function MainView({ initialFiles }: MainViewProps) {
       return refreshedFiles;
   }, [toast]);
 
-  // Auto-refresh hook
-  useEffect(() => {
-    const interval = setInterval(() => {
-        console.log("Auto-refreshing file list...");
-        startRefreshTransition(async () => {
-            await handleRefresh(true);
-        });
-    }, 10000); // Refresh every 10 seconds
-
-    return () => clearInterval(interval);
-  }, [handleRefresh]);
-
-
-  const handleUploadComplete = useCallback(async () => {
-    startRefreshTransition(async () => {
-        toast({
-            title: "Upload Successful",
-            description: "Your file has been uploaded and processed.",
-        });
-        const refreshedFiles = await handleRefresh();
-        if (refreshedFiles.length > 0) {
-            // Find the newest file to select it
-            const newFile = refreshedFiles.reduce((latest, file) => new Date(file.uploadDate) > new Date(latest.uploadDate) ? file : latest);
-            if (newFile) {
-                handleSelectFile(newFile.name);
-            }
-        }
-    });
-  }, [toast, handleRefresh]);
-
-
   const handleSelectFile = useCallback((name: string) => {
+    if (name === selectedFileName) return;
+
     setSelectedFileName(name);
     setFileContent(null);
     setExtractedData(null);
@@ -94,13 +64,32 @@ export function MainView({ initialFiles }: MainViewProps) {
         setExtractedData(data);
       });
     });
-  }, [toast]);
+  }, [toast, selectedFileName]);
+
+  const handleUploadComplete = useCallback(async () => {
+    startRefreshTransition(async () => {
+        toast({
+            title: "Upload Successful",
+            description: "Your file has been processed and is now available.",
+        });
+        const refreshedFiles = await handleRefresh(true);
+        if (refreshedFiles.length > 0) {
+            // Find the newest file by comparing upload dates
+            const newFile = refreshedFiles.reduce((latest, file) => 
+                new Date(file.uploadDate) > new Date(latest.uploadDate) ? file : latest
+            );
+            if (newFile) {
+                handleSelectFile(newFile.name);
+            }
+        }
+    });
+  }, [toast, handleRefresh, handleSelectFile]);
 
   useEffect(() => {
     if (fileContent && extractedData) {
         setFileContent(current => current ? {...current, extractedData: extractedData} : null);
     }
-  }, [extractedData, fileContent?.name]);
+  }, [extractedData]);
 
   const handleDeleteFile = useCallback((name: string) => {
      startRefreshTransition(async () => {
