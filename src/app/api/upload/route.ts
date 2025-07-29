@@ -1,9 +1,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminApp } from "@/lib/firebase-admin";
-import { PassThrough } from "stream";
 
 const bucket = adminApp.storage().bucket();
+
+// In-memory store for chunks
+const chunkStore = new Map<string, Buffer[]>();
 
 function parseUserDataHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -23,29 +25,25 @@ function parseUserDataHeader(header: string): Record<string, string> {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("[SERVER] Received upload request.");
-
     let userData = null;
     let foundHeaderKey = null;
 
-    console.log("[SERVER] All incoming headers:");
     request.headers.forEach((value, key) => {
-        console.log(`- ${key}: ${value}`);
+        // The SIM7600G seems to mangle header names. A reliable way
+        // to find our custom data is to look for a key part.
         if (key.toLowerCase().includes('userdata') || value.includes('X-File-ID')) {
             userData = value;
             foundHeaderKey = key;
         }
     });
-    
-    if (userData) {
-         console.log(`[SERVER] Found custom header string in key '${foundHeaderKey}': ${userData}`);
-    } else {
-        userData = request.headers.get("x-userdata");
-        if(userData) console.log("[SERVER] Found custom header in 'x-userdata'");
-    }
 
     if (!userData) {
-      return NextResponse.json({ error: "Missing USERDATA or equivalent custom header." }, { status: 400 });
+      console.error("[SERVER] Missing USERDATA or equivalent custom header containing 'X-File-ID'.");
+      // Fallback for some modules that might use a standard header name
+      userData = request.headers.get("x-userdata");
+      if(!userData) {
+        return NextResponse.json({ error: "Missing required USERDATA or x-userdata header." }, { status: 400 });
+      }
     }
     
     const headers = parseUserDataHeader(userData);
@@ -53,12 +51,11 @@ export async function POST(request: NextRequest) {
     const fileIdentifier = headers["x-file-id"];
     const chunkIndexStr = headers["x-chunk-index"];
     const totalChunksStr = headers["x-total-chunks"];
-    const originalFilename = headers["x-original-filename"]?.replace(/^\//, ''); // Remove leading slash
-
-    console.log(`[SERVER] Parsed Headers: x-file-id=${fileIdentifier}, x-chunk-index=${chunkIndexStr}, x-total-chunks=${totalChunksStr}, x-original-filename=${originalFilename}`);
+    // Sanitize filename: remove leading slash if present
+    const originalFilename = headers["x-original-filename"]?.replace(/^\//, '');
 
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
-      console.error("[SERVER] Missing required fields in parsed USERDATA header.");
+      console.error("[SERVER] Missing required fields in parsed USERDATA header.", { headers });
       return NextResponse.json({ error: "Missing required fields in parsed USERDATA header." }, { status: 400 });
     }
 
@@ -71,64 +68,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
     }
     const buffer = Buffer.from(chunkBuffer);
-    console.log(`[SERVER] Received chunk ${chunkIndex + 1}/${totalChunks} with size ${buffer.length} bytes for ${originalFilename}.`);
+    
+    if (!chunkStore.has(fileIdentifier)) {
+        chunkStore.set(fileIdentifier, []);
+    }
 
-    const file = bucket.file(originalFilename);
+    const chunks = chunkStore.get(fileIdentifier)!;
+    chunks[chunkIndex] = buffer;
 
-    // Create a write stream to the file in Firebase Storage.
-    // This will either create the file or append to it if it already exists.
-    // For chunked uploads, we rely on the client to send chunks in order.
-    // GCS doesn't have a simple "append" so we manage this by streaming.
-    const stream = file.createWriteStream({
-        metadata: {
-            contentType: 'application/octet-stream',
-        },
-        // We can't make this resumable in the same way as a single upload,
-        // so we manage chunks ourselves.
-        resumable: false, 
-    });
+    console.log(`[SERVER] Stored chunk ${chunkIndex + 1}/${totalChunks} for ${fileIdentifier}`);
 
-    const passthrough = new PassThrough();
-    passthrough.write(buffer);
-    passthrough.end();
-
-    // The logic for appending is simplified here. A robust implementation
-    // for parallel uploads would require composing parts. For serial chunks,
-    // we can manage the stream. On chunk 0, we start new. On others, we would
-    // ideally append. GCS write streams overwrite by default.
-    // The correct way to handle this is to write chunks to temporary files
-    // and then compose them at the end.
-
-    // Let's try a simplified approach first. If it is chunk 0, just write.
-    // If it's a subsequent chunk, we have an issue because we can't easily append.
-    // Let's adjust the logic to handle this. We will have to write to temporary
-    // chunk files in storage and then compose them.
-
-    const tempChunkFile = bucket.file(`tmp/${originalFilename}.${chunkIndex}`);
-    await tempChunkFile.save(buffer);
-    console.log(`[SERVER] Saved chunk ${chunkIndex} to temporary file.`);
-
-    if (chunkIndex === totalChunks - 1) {
-        console.log(`[SERVER] Final chunk received for ${originalFilename}. Composing file...`);
+    if (chunks.length === totalChunks && chunks.every(c => c !== undefined)) {
+        console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and uploading...`);
         
-        const tempChunkFiles = [];
-        for (let i = 0; i < totalChunks; i++) {
-            tempChunkFiles.push(bucket.file(`tmp/${originalFilename}.${i}`));
-        }
+        const fullFileBuffer = Buffer.concat(chunks);
+        const file = bucket.file(originalFilename);
 
-        // Check if all chunks exist before composing
-        const allChunksExist = await Promise.all(tempChunkFiles.map(f => f.exists()));
-        if(allChunksExist.some(e => !e[0])) {
-             console.error("[SERVER] Missing some temporary chunks, cannot compose file.");
-             return NextResponse.json({ error: "Missing some chunks, cannot compose file." }, { status: 500 });
-        }
+        await file.save(fullFileBuffer, {
+            metadata: {
+                contentType: 'application/octet-stream',
+            },
+        });
+
+        console.log(`[SERVER] Successfully uploaded ${originalFilename} to Firebase Storage.`);
         
-        await bucket.combine(tempChunkFiles, bucket.file(originalFilename));
-        console.log(`[SERVER] Successfully composed ${originalFilename}.`);
-
-        // Clean up temporary chunk files
-        await Promise.all(tempChunkFiles.map(f => f.delete()));
-        console.log(`[SERVER] Deleted temporary chunk files for ${originalFilename}.`);
+        // Clean up the in-memory store for this file
+        chunkStore.delete(fileIdentifier);
 
         return NextResponse.json({ message: "File uploaded and composed successfully.", filename: originalFilename }, { status: 200 });
     }
@@ -136,8 +101,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received and stored.` }, { status: 200 });
 
   } catch (error) {
-    console.error("[SERVER] Upload error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("[SERVER] Unhandled error in upload handler:", error);
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
     return NextResponse.json(
       { error: "Internal Server Error", details: errorMessage },
       { status: 500 }
