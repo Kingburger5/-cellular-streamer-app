@@ -5,7 +5,7 @@ let adminApp: admin.app.App;
 if (!admin.apps.length) {
   adminApp = admin.initializeApp({
     credential: admin.credential.applicationDefault(),
-    storageBucket: 'cellular-data-streamer.appspot.com'
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
   });
 } else {
   adminApp = admin.app();
