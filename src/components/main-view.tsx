@@ -27,10 +27,10 @@ export function MainView({ initialFiles }: MainViewProps) {
 
   const { toast } = useToast();
 
-  const handleRefresh = useCallback(async (selectFile?: string) => {
+  const handleRefresh = useCallback(async (isAutoRefresh = false) => {
       const refreshedFiles = await getFilesAction();
       setFiles(refreshedFiles);
-      if (!selectFile) {
+      if (!isAutoRefresh) {
         toast({
           title: "File list updated",
           description: `Found ${refreshedFiles.length} files.`,
@@ -38,6 +38,19 @@ export function MainView({ initialFiles }: MainViewProps) {
       }
       return refreshedFiles;
   }, [toast]);
+
+  // Auto-refresh hook
+  useEffect(() => {
+    const interval = setInterval(() => {
+        console.log("Auto-refreshing file list...");
+        startRefreshTransition(async () => {
+            await handleRefresh(true);
+        });
+    }, 10000); // Refresh every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [handleRefresh]);
+
 
   const handleUploadComplete = useCallback(async () => {
     startRefreshTransition(async () => {
@@ -103,7 +116,7 @@ export function MainView({ initialFiles }: MainViewProps) {
                 setError(null);
                 setExtractedData(null);
             }
-            await handleRefresh(name);
+            await handleRefresh(true);
         } else {
             toast({
                 variant: "destructive",
@@ -116,7 +129,7 @@ export function MainView({ initialFiles }: MainViewProps) {
 
   const onRefresh = useCallback(() => {
     startRefreshTransition(async () => {
-        await handleRefresh();
+        await handleRefresh(false);
     });
   }, [handleRefresh]);
 
