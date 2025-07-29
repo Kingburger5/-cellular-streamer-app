@@ -44,7 +44,8 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
 
 // Function to update status in Firebase Realtime Database
 async function updateStatus(identifier: string, status: string, error: string | null = null) {
-    const safeIdentifier = identifier.replace(/[.#$[\]]/g, '_');
+    // Firebase RTDB paths must not contain '.', '#', '$', '[', or ']'
+    const safeIdentifier = identifier.replace(/[.#$[\]/]/g, '_');
     const statusRef = dbRef(database, `uploads/${safeIdentifier}`);
     await set(statusRef, { 
         status, 
@@ -59,17 +60,17 @@ export async function POST(request: NextRequest) {
     await ensureUploadDirExists();
 
     const userDataHeader = request.headers.get("x-userdata");
+    
     const parsedHeaders = parseUserDataHeader(userDataHeader);
 
-    // This is the critical check. If x-file-id is missing, we must handle it gracefully.
     if (!parsedHeaders["x-file-id"]) {
         const errorMsg = "Missing X-File-ID in x-userdata header.";
-        // We log to a generic "unknown_request" entry in firebase
         await updateStatus('unknown_request', 'Error', errorMsg);
         return NextResponse.json({ error: errorMsg }, { status: 400 });
     }
     
     fileIdentifier = parsedHeaders["x-file-id"];
+
     const chunkIndexStr = parsedHeaders["x-chunk-index"];
     const totalChunksStr = parsedHeaders["x-total-chunks"];
     const originalFilenameUnsafe = parsedHeaders["x-original-filename"];
@@ -83,8 +84,9 @@ export async function POST(request: NextRequest) {
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
     const originalFilename = path.basename(originalFilenameUnsafe);
-    // Use a safe version of the identifier for firebase paths
-    const safeIdentifier = fileIdentifier.replace(/[.#$[\]/]/g, '_');
+    
+    // THIS IS THE CRITICAL FIX: Sanitize the entire identifier to be safe for Firebase paths
+    const safeIdentifier = fileIdentifier.replace(/[^a-zA-Z0-9-._]/g, '_');
     
     await updateStatus(safeIdentifier, `Receiving chunk ${chunkIndex + 1}/${totalChunks}`);
 
@@ -146,7 +148,7 @@ export async function POST(request: NextRequest) {
     console.error("[SERVER] Unhandled error in upload handler:", error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
     // Use the safe identifier for logging, or a fallback if it was never set.
-    const safeId = fileIdentifier.replace(/[.#$[\]/]/g, '_') || 'unknown_error';
+    const safeId = fileIdentifier.replace(/[^a-zA-Z0-9-._]/g, '_') || 'unknown_error';
     await updateStatus(safeId, 'Error', errorMessage);
     return NextResponse.json(
       { error: "Internal Server Error", details: errorMessage },
