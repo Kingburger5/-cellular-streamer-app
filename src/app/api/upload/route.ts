@@ -9,7 +9,7 @@ async function ensureUploadDirExists() {
   try {
     await fs.access(UPLOAD_DIR);
   } catch {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    await fs.mkdir(UPLOAD_dDIR, { recursive: true });
   }
 }
 
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!userData) {
-        return NextResponse.json({ error: "Missing USERDATA or equivalent custom header." }, { status: 400 });
+      return NextResponse.json({ error: "Missing USERDATA or equivalent custom header." }, { status: 400 });
     }
     
     const headers = parseUserDataHeader(userData);
