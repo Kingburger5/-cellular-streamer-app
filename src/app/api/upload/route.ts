@@ -1,11 +1,19 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { adminApp } from "@/lib/firebase-admin";
+import fs from "fs/promises";
+import path from "path";
 
-const bucket = adminApp.storage().bucket();
-
-// In-memory store for chunks
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 const chunkStore = new Map<string, Buffer[]>();
+
+async function ensureUploadDirExists() {
+  try {
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  } catch (error) {
+    console.error("Error creating upload directory:", error);
+    throw new Error("Could not create upload directory.");
+  }
+}
 
 function parseUserDataHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -25,25 +33,22 @@ function parseUserDataHeader(header: string): Record<string, string> {
 
 export async function POST(request: NextRequest) {
   try {
-    let userData = null;
-    let foundHeaderKey = null;
+    await ensureUploadDirExists();
 
+    let userData = null;
     request.headers.forEach((value, key) => {
-        // The SIM7600G seems to mangle header names. A reliable way
-        // to find our custom data is to look for a key part.
         if (key.toLowerCase().includes('userdata') || value.includes('X-File-ID')) {
             userData = value;
-            foundHeaderKey = key;
         }
     });
-
+    
     if (!userData) {
-      console.error("[SERVER] Missing USERDATA or equivalent custom header containing 'X-File-ID'.");
-      // Fallback for some modules that might use a standard header name
-      userData = request.headers.get("x-userdata");
-      if(!userData) {
-        return NextResponse.json({ error: "Missing required USERDATA or x-userdata header." }, { status: 400 });
-      }
+        // Fallback for some modules that might use a standard header name
+        userData = request.headers.get("x-userdata");
+        if(!userData) {
+            console.error("[SERVER] Missing USERDATA or equivalent custom header containing 'X-File-ID'.");
+            return NextResponse.json({ error: "Missing required USERDATA or x-userdata header." }, { status: 400 });
+        }
     }
     
     const headers = parseUserDataHeader(userData);
@@ -51,16 +56,17 @@ export async function POST(request: NextRequest) {
     const fileIdentifier = headers["x-file-id"];
     const chunkIndexStr = headers["x-chunk-index"];
     const totalChunksStr = headers["x-total-chunks"];
-    // Sanitize filename: remove leading slash if present
-    const originalFilename = headers["x-original-filename"]?.replace(/^\//, '');
+    const originalFilenameUnsafe = headers["x-original-filename"];
 
-    if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
+    if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
       console.error("[SERVER] Missing required fields in parsed USERDATA header.", { headers });
       return NextResponse.json({ error: "Missing required fields in parsed USERDATA header." }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
+    // Sanitize filename to prevent directory traversal
+    const originalFilename = path.basename(originalFilenameUnsafe);
 
     const chunkBuffer = await request.arrayBuffer();
     if (!chunkBuffer || chunkBuffer.byteLength === 0) {
@@ -79,23 +85,19 @@ export async function POST(request: NextRequest) {
     console.log(`[SERVER] Stored chunk ${chunkIndex + 1}/${totalChunks} for ${fileIdentifier}`);
 
     if (chunks.length === totalChunks && chunks.every(c => c !== undefined)) {
-        console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and uploading...`);
+        console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling and saving...`);
         
         const fullFileBuffer = Buffer.concat(chunks);
-        const file = bucket.file(originalFilename);
+        const filePath = path.join(UPLOAD_DIR, originalFilename);
 
-        await file.save(fullFileBuffer, {
-            metadata: {
-                contentType: 'application/octet-stream',
-            },
-        });
+        await fs.writeFile(filePath, fullFileBuffer);
 
-        console.log(`[SERVER] Successfully uploaded ${originalFilename} to Firebase Storage.`);
+        console.log(`[SERVER] Successfully saved ${originalFilename} to ${filePath}.`);
         
         // Clean up the in-memory store for this file
         chunkStore.delete(fileIdentifier);
 
-        return NextResponse.json({ message: "File uploaded and composed successfully.", filename: originalFilename }, { status: 200 });
+        return NextResponse.json({ message: "File uploaded successfully.", filename: originalFilename }, { status: 200 });
     }
 
     return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received and stored.` }, { status: 200 });

@@ -1,22 +1,34 @@
 
 "use server";
 
-import { adminApp } from "@/lib/firebase-admin";
+import fs from "fs/promises";
+import path from "path";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
-const bucket = adminApp.storage().bucket();
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+
+// Helper to ensure upload directory exists
+async function ensureUploadDirExists() {
+  try {
+    await fs.access(UPLOAD_DIR);
+  } catch {
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  }
+}
 
 export async function getFilesAction(): Promise<UploadedFile[]> {
   try {
-    const [files] = await bucket.getFiles();
+    await ensureUploadDirExists();
+    const filenames = await fs.readdir(UPLOAD_DIR);
     const filesWithStats = await Promise.all(
-      files.map(async (file) => {
-        const [metadata] = await file.getMetadata();
+      filenames.map(async (name) => {
+        const filePath = path.join(UPLOAD_DIR, name);
+        const stats = await fs.stat(filePath);
         return {
-          name: file.name,
-          size: Number(metadata.size),
-          uploadDate: new Date(metadata.updated),
+          name: name,
+          size: stats.size,
+          uploadDate: stats.mtime,
         };
       })
     );
@@ -25,7 +37,7 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 
     return filesWithStats;
   } catch (error) {
-    console.error("Error reading files from Firebase Storage:", error);
+    console.error("Error reading files from upload directory:", error);
     return [];
   }
 }
@@ -68,15 +80,13 @@ export async function getFileContentAction(
   filename: string
 ): Promise<FileContent | null> {
   try {
-    const file = bucket.file(filename);
-    const [exists] = await file.exists();
-    if (!exists) {
-        throw new Error("File does not exist in Firebase Storage.");
-    }
+    await ensureUploadDirExists();
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(UPLOAD_DIR, safeFilename);
     
-    const extension = `.${filename.split('.').pop()}`.toLowerCase();
+    const extension = path.extname(safeFilename).toLowerCase();
     
-    const [fileBuffer] = await file.download();
+    const fileBuffer = await fs.readFile(filePath);
     
     let content: string;
     let isBinary = false;
@@ -91,9 +101,9 @@ export async function getFileContentAction(
         rawMetadata = content;
     }
 
-    return { content, extension, name: filename, isBinary, rawMetadata, extractedData: null };
+    return { content, extension, name: safeFilename, isBinary, rawMetadata, extractedData: null };
   } catch (error) {
-    console.error(`Error reading file ${filename} from Firebase Storage:`, error);
+    console.error(`Error reading file ${filename}:`, error);
     return null;
   }
 }
@@ -119,12 +129,14 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const file = bucket.file(filename);
-    await file.delete();
-    console.log(`Successfully deleted ${filename} from Firebase Storage.`);
+    await ensureUploadDirExists();
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(UPLOAD_DIR, safeFilename);
+    await fs.unlink(filePath);
+    console.log(`Successfully deleted ${safeFilename}`);
     return { success: true };
   } catch (error) {
-    console.error(`Error deleting file ${filename} from Firebase Storage:`, error);
+    console.error(`Error deleting file ${filename}:`, error);
     if (error instanceof Error) {
        return { error: `Failed to delete file: ${error.message}` };
     }
