@@ -7,10 +7,10 @@
 #define SIM7600_RX 16 // ESP32 RX to SIM7600 TX
 #define SD_CS      5  // SD card CS pin
 
-HardwareSerial modem(2); // Use UART2 for the modem
+HardwareSerial modem(2); // Use UART2
 
 // APN and server config
-String apn = "internet";
+String apn = "vodafone"; // Using vodafone as requested
 String host = "cellular-data-streamer.web.app";
 String path = "/api/upload";
 
@@ -19,7 +19,7 @@ String fileList[MAX_FILES];
 int fileCount = 0;
 
 // Helper to send AT command and wait for expected response
-bool sendATCommand(String cmd, String expectedResponse, unsigned long timeout) {
+bool sendATCommand(String cmd, String expectedResponse, unsigned long timeout, bool printModemRsp = true) {
   if (cmd.length() > 0) {
     Serial.print(">> ");
     Serial.println(cmd);
@@ -33,24 +33,28 @@ bool sendATCommand(String cmd, String expectedResponse, unsigned long timeout) {
     while (modem.available()) {
       char c = modem.read();
       response += c;
-      // Don't print byte by byte, it's too slow.
+       if (printModemRsp) {
+          Serial.write(c);
+       }
     }
      if (response.indexOf(expectedResponse) != -1) {
-        Serial.print("[MODEM] ");
-        Serial.println(response);
-        return true;
-      }
-      if (response.indexOf("ERROR") != -1) {
-        Serial.print("[MODEM] ");
-        Serial.println(response);
-        return false;
-      }
+      return true;
+    }
+    if (response.indexOf("ERROR") != -1) {
+      // Don't immediately return on error, sometimes it's part of a larger response
+      // But we can log it
+    }
   }
-
-  Serial.println("[ERROR] Timeout or unexpected response.");
-  Serial.print("[MODEM] ");
-  Serial.println(response);
+  if (printModemRsp) {
+    Serial.println("\n[ERROR] Timeout or unexpected response. Expected: " + expectedResponse);
+  }
   return false;
+}
+
+void sendRaw(const uint8_t* buffer, size_t size) {
+    for(size_t i = 0; i < size; i++) {
+        modem.write(buffer[i]);
+    }
 }
 
 
@@ -58,15 +62,13 @@ bool setupSIM7600() {
   Serial.println("[INFO] Initializing SIM7600G...");
 
   if (!sendATCommand("AT", "OK", 3000)) return false;
-  if (!sendATCommand("ATE0", "OK", 3000)) return false; // Disable echo
+  if (!sendATCommand("ATE0", "OK", 3000)) return false; 
   if (!sendATCommand("AT+CPIN?", "READY", 5000)) return false;
-  if (!sendATCommand("AT+CSQ", "OK", 3000)) return false;
-
+  
   Serial.println("[INFO] Waiting for network registration...");
   unsigned long regStart = millis();
   while (millis() - regStart < 60000) {
-    if (sendATCommand("AT+CGREG?", "+CGREG: 0,1", 5000) ||
-        sendATCommand("AT+CGREG?", "+CGREG: 0,5", 5000)) {
+    if (sendATCommand("AT+CGREG?", "+CGREG: 0,1", 2000, false) || sendATCommand("AT+CGREG?", "+CGREG: 0,5", 2000, false)) {
       Serial.println("[INFO] Registered to network.");
       break;
     }
@@ -77,15 +79,20 @@ bool setupSIM7600() {
     Serial.println("[ERROR] Network registration timeout.");
     return false;
   }
-
-  if (!sendATCommand("AT+COPS?", "OK", 5000)) return false;
+  sendATCommand("AT+CGREG?", "OK", 2000); // Print final registration status
 
   String cmd = "AT+CGDCONT=1,\"IP\",\"" + apn + "\"";
   if (!sendATCommand(cmd, "OK", 5000)) return false;
   
-  // Enable HTTP(S) stack
+  // Enable HTTP/S
   if (!sendATCommand("AT+HTTPINIT", "OK", 5000)) {
-      Serial.println("[WARN] HTTP already initialized.");
+     Serial.println("[WARN] HTTP already initialized. Continuing...");
+     sendATCommand("AT+HTTPTERM", "OK", 5000);
+     delay(1000);
+     if (!sendATCommand("AT+HTTPINIT", "OK", 5000)) {
+        Serial.println("[ERROR] Failed to initialize HTTP.");
+        return false;
+     }
   }
 
   Serial.println("[INFO] SIM7600G initialized successfully.");
@@ -109,9 +116,9 @@ void listWavFiles() {
   File file = root.openNextFile();
   while (file) {
     String name = file.name();
-    if (name.endsWith(".wav") || name.endsWith(".WAV")) {
+    if ((name.endsWith(".wav") || name.endsWith(".WAV")) && name.length() > 1 && name[0] != '_') {
       if (fileCount < MAX_FILES) {
-        fileList[fileCount++] = name;
+        fileList[fileCount++] = "/" + name;
       }
     }
     file.close();
@@ -129,124 +136,87 @@ void listWavFiles() {
   }
 }
 
-// Re-implementation of uploadFile to be compatible with the server
 bool uploadFile(String filename) {
-    File file = SD.open(filename, FILE_READ);
+    File file = SD.open(filename);
     if (!file) {
-        Serial.println("[ERROR] Failed to open file for upload.");
+        Serial.println("[ERROR] Failed to open file: " + filename);
         return false;
     }
 
-    const size_t CHUNK_SIZE = 1024 * 4; // 4KB chunks
-    size_t fileSize = file.size();
-    int totalChunks = (fileSize + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    String fileIdentifier = filename + "-" + String(fileSize) + "-" + String(file.getLastWrite());
+    String boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
+    String fileIdentifier = filename + "-" + String(file.size());
+    size_t totalChunks = (file.size() + 512 - 1) / 512;
     
-    Serial.println("[INFO] Starting upload for: " + filename);
-    Serial.println("[INFO] File Size: " + String(fileSize) + " bytes, Total Chunks: " + String(totalChunks));
+    Serial.println("[INFO] Uploading " + filename + " in " + totalChunks + " chunks.");
 
-    for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-        Serial.println("\n[INFO] Uploading chunk " + String(chunkIndex + 1) + "/" + String(totalChunks));
+    for (size_t i = 0; i < totalChunks; i++) {
+        uint8_t buffer[512];
+        size_t chunkSize = file.read(buffer, sizeof(buffer));
 
-        size_t startByte = chunkIndex * CHUNK_SIZE;
-        size_t endByte = min(startByte + CHUNK_SIZE, fileSize);
-        size_t currentChunkSize = endByte - startByte;
+        if (chunkSize == 0) {
+            break; 
+        }
 
-        file.seek(startByte);
+        String start_body = "--" + boundary + "\r\n";
+        start_body += "Content-Disposition: form-data; name=\"chunk\"; filename=\"" + filename.substring(1) + "\"\r\n";
+        start_body += "Content-Type: application/octet-stream\r\n\r\n";
         
-        String boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
-        
-        // Construct the multipart/form-data body
-        String data_start = "--" + boundary + "\r\n";
-        data_start += "Content-Disposition: form-data; name=\"chunk\"; filename=\"" + filename + "\"\r\n";
-        data_start += "Content-Type: application/octet-stream\r\n\r\n";
-        
-        String data_end = "\r\n--" + boundary + "\r\n";
-        data_end += "Content-Disposition: form-data; name=\"fileIdentifier\"\r\n\r\n" + fileIdentifier + "\r\n";
-        data_end += "--" + boundary + "\r\n";
-        data_end += "Content-Disposition: form-data; name=\"chunkIndex\"\r\n\r\n" + String(chunkIndex) + "\r\n";
-        data_end += "--" + boundary + "\r\n";
-        data_end += "Content-Disposition: form-data; name=\"totalChunks\"\r\n\r\n" + String(totalChunks) + "\r\n";
-        data_end += "--" + boundary + "\r\n";
-        data_end += "Content-Disposition: form-data; name=\"originalFilename\"\r\n\r\n" + filename + "\r\n";
-        data_end += "--" + boundary + "--\r\n";
+        String end_body = "\r\n--" + boundary + "\r\n";
+        end_body += "Content-Disposition: form-data; name=\"fileIdentifier\"\r\n\r\n" + fileIdentifier + "\r\n";
+        end_body += "--" + boundary + "\r\n";
+        end_body += "Content-Disposition: form-data; name=\"chunkIndex\"\r\n\r\n" + String(i) + "\r\n";
+        end_body += "--" + boundary + "\r\n";
+        end_body += "Content-Disposition: form-data; name=\"totalChunks\"\r\n\r\n" + String(totalChunks) + "\r\n";
+        end_body += "--" + boundary + "\r\n";
+        end_body += "Content-Disposition: form-data; name=\"originalFilename\"\r\n\r\n" + filename.substring(1) + "\r\n";
+        end_body += "--" + boundary + "--\r\n";
 
-        size_t totalPayloadSize = data_start.length() + currentChunkSize + data_end.length();
+        size_t total_len = start_body.length() + chunkSize + end_body.length();
 
-        // 1. Set URL
+        Serial.println("[INFO] Uploading chunk " + String(i + 1) + "/" + String(totalChunks) + ", size: " + String(chunkSize) + " bytes");
+        
         if (!sendATCommand("AT+HTTPPARA=\"URL\",\"http://" + host + path + "\"", "OK", 5000)) return false;
-        
-        // 2. Set Content-Type
         if (!sendATCommand("AT+HTTPPARA=\"CONTENT\",\"multipart/form-data; boundary=" + boundary + "\"", "OK", 5000)) return false;
 
-        // 3. Set data size
-        if (!sendATCommand("AT+HTTPDATA=" + String(totalPayloadSize) + ",120000", "DOWNLOAD", 10000)) {
-            Serial.println("[ERROR] Failed to start HTTP data command.");
+        String data_cmd = "AT+HTTPDATA=" + String(total_len) + ",20000"; // Set total length and 20s timeout
+        if (!sendATCommand(data_cmd, "DOWNLOAD", 5000)) {
+            Serial.println("[ERROR] Failed to start data send.");
             return false;
         }
 
-        // 4. Send data
-        Serial.println("[INFO] Sending payload...");
-        modem.print(data_start);
-        
-        uint8_t buffer[256];
-        size_t bytesSentForChunk = 0;
-        while(bytesSentForChunk < currentChunkSize) {
-            size_t willRead = min((size_t)sizeof(buffer), currentChunkSize - bytesSentForChunk);
-            size_t didRead = file.read(buffer, willRead);
-            modem.write(buffer, didRead);
-            bytesSentForChunk += didRead;
-        }
-        
-        modem.print(data_end);
-        
-        // Wait for modem to confirm data receipt
-        if (!sendATCommand("", "OK", 20000)) { // Wait for the OK after data sending
-          Serial.println("[ERROR] Modem did not confirm data receipt.");
-          return false;
+        modem.print(start_body);
+        sendRaw(buffer, chunkSize);
+        modem.print(end_body);
+
+        if (!sendATCommand("", "OK", 20000, false)) { // Wait for OK after data is sent
+           Serial.println("[WARN] Did not receive OK after chunk. Checking action response...");
         }
 
-        // 5. POST action
-        if (!sendATCommand("AT+HTTPACTION=1", "OK", 20000)) return false; // 1 for POST
-
-        // 6. Check response
-        unsigned long readStart = millis();
-        bool success = false;
-        while(millis() - readStart < 20000) {
-           if(modem.find("+HTTPACTION: 1,200")) { // 1=POST, 200=OK
-              Serial.println("[INFO] Chunk uploaded successfully.");
-              success = true;
-              break;
-           }
+        if (!sendATCommand("AT+HTTPACTION=1", "+HTTPACTION: 1,200", 20000)) {
+             Serial.println("[ERROR] POST action failed for chunk " + String(i+1));
+             sendATCommand("AT+HTTPREAD", "OK", 10000); // Read response body to debug
+             return false;
         }
-
-        if (!success) {
-            Serial.println("[ERROR] Server did not return 200 OK.");
-            // Optional: read server response
-            sendATCommand("AT+HTTPREAD", "", 5000);
-            return false;
-        }
+        Serial.println("[INFO] Chunk " + String(i + 1) + " uploaded successfully.");
     }
-    
+
     file.close();
-    Serial.println("[INFO] File upload finished successfully!");
+    Serial.println("[INFO] File upload complete.");
     return true;
 }
 
-
 void setup() {
   Serial.begin(115200);
+  while (!Serial); 
   delay(1000);
-  while (!Serial); // Wait for serial port to connect
-  
-  Serial.println("\n=== Cellular Data Streamer v2.0 ===");
+  Serial.println("\n=== Cellular Data Streamer ===");
 
   modem.begin(115200);
   Serial.println("[INFO] Modem serial started.");
 
   Serial.println("[INFO] Initializing SD card...");
   if (!SD.begin(SD_CS)) {
-    Serial.println("[ERROR] SD card init failed! Halting.");
+    Serial.println("[ERROR] SD card init failed!");
     while (1) delay(1000);
   }
   Serial.println("[INFO] SD card ready.");
@@ -254,14 +224,14 @@ void setup() {
   listWavFiles();
 
   if (fileCount == 0) {
-    Serial.println("[INFO] No wav files found. Waiting for new files...");
-    // You could loop here waiting for files
+    Serial.println("[INFO] No .wav files found. Please ensure files are in the root directory.");
+    Serial.println("[INFO] Halting.");
     while (1) delay(1000);
   }
 
   int selectedIndex = -1;
   while (selectedIndex < 0) {
-    Serial.println("\nSelect file number to upload (or type 0 to re-list files):");
+    Serial.println("\nSelect file number to upload (or type 0 to refresh list):");
     while (!Serial.available()) {
       delay(100);
     }
@@ -277,31 +247,30 @@ void setup() {
     if (num >= 1 && num <= fileCount) {
       selectedIndex = num - 1;
     } else {
-      Serial.println("[WARN] Invalid selection, please try again.");
+      Serial.println("Invalid selection, try again.");
     }
   }
 
-  String selectedFilename = fileList[selectedIndex];
-  Serial.println("[INFO] Selected file: " + selectedFilename);
+  Serial.println("[INFO] Selected file: " + fileList[selectedIndex]);
 
   if (!setupSIM7600()) {
     Serial.println("[FATAL] SIM7600 initialization failed. Halting.");
     while (1) delay(1000);
   }
 
-  if (!uploadFile(selectedFilename)) {
-    Serial.println("\n[FATAL] Upload failed. Halting.");
+  if (!uploadFile(fileList[selectedIndex])) {
+    Serial.println("[ERROR] Upload failed.");
   } else {
-    Serial.println("\n[SUCCESS] Upload complete!");
+    Serial.println("[SUCCESS] Upload succeeded!");
   }
-   
-  // Optional: Terminate HTTP after use
-  sendATCommand("AT+HTTPTERM", "OK", 5000);
   
-  Serial.println("[INFO] Process finished.");
+  sendATCommand("AT+HTTPTERM", "OK", 5000);
+
+  Serial.println("\n[INFO] Process complete. Restarting in 10 seconds...");
+  delay(10000);
+  ESP.restart();
 }
 
 void loop() {
-  // Let ESP32 sleep or idle
-  delay(10000);
+  // Nothing to do here
 }
