@@ -73,17 +73,14 @@ export function MainView({ initialFiles }: MainViewProps) {
             description: "Your file has been processed and is now available.",
         });
         const refreshedFiles = await handleRefresh(true);
-        if (refreshedFiles.length > 0) {
-            // Find the newest file by comparing upload dates
-            const newFile = refreshedFiles.reduce((latest, file) => 
-                new Date(file.uploadDate) > new Date(latest.uploadDate) ? file : latest
-            );
+        if (refreshedFiles.length > 0 && refreshedFiles.length > files.length) {
+            const newFile = refreshedFiles.find(f1 => !files.some(f2 => f2.name === f1.name));
             if (newFile) {
                 handleSelectFile(newFile.name);
             }
         }
     });
-  }, [toast, handleRefresh, handleSelectFile]);
+  }, [toast, handleRefresh, handleSelectFile, files]);
 
   useEffect(() => {
     if (fileContent && extractedData) {
