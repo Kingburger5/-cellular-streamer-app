@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getStorage } from "firebase/storage";
+import { getDatabase } from "firebase/database";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -10,8 +10,11 @@ const firebaseConfig = {
   projectId: "cellular-data-streamer",
   storageBucket: "cellular-data-streamer.appspot.com",
   messagingSenderId: "945649809294",
-  appId: "1:945649809294:web:00c9ea813d2fc49d6d16df"
+  appId: "1:945649809294:web:00c9ea813d2fc49d6d16df",
+  databaseURL: "https://cellular-data-streamer-default-rtdb.firebaseio.com"
 };
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
+export const storage = getStorage(app);
+export const database = getDatabase(app);

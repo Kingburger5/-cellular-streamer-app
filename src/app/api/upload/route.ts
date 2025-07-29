@@ -2,13 +2,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { storage, database } from "@/lib/firebase";
+import { ref as dbRef, set, remove } from "firebase/database";
+import { 
+  ref as storageRef, 
+  uploadBytes, 
+  getBytes, 
+  listAll, 
+  deleteObject 
+} from "firebase/storage";
+
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
-// Global in-memory store for chunks.
-// This will be shared across requests in the same server instance.
-const chunkStore = new Map<string, Map<number, Buffer>>();
-
+// Helper to ensure upload directory exists
 async function ensureUploadDirExists() {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
@@ -21,8 +28,9 @@ async function ensureUploadDirExists() {
 }
 
 function parseUserDataHeader(header: string | null): Record<string, string> {
-    if (!header) return {};
     const data: Record<string, string> = {};
+    if (!header) return data;
+
     header.split(';').forEach(part => {
         const firstColonIndex = part.indexOf(':');
         if (firstColonIndex !== -1) {
@@ -34,57 +42,75 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
     return data;
 }
 
+// Function to update status in Firebase Realtime Database
+async function updateStatus(identifier: string, status: string, error: string | null = null) {
+    const safeIdentifier = identifier.replace(/[.#$[\]]/g, '_');
+    const statusRef = dbRef(database, `uploads/${safeIdentifier}`);
+    await set(statusRef, { 
+        status, 
+        error, 
+        lastUpdated: new Date().toISOString() 
+    });
+}
+
 export async function POST(request: NextRequest) {
+  let fileIdentifier = "unknown";
   try {
     await ensureUploadDirExists();
 
     const userDataHeader = request.headers.get("x-userdata");
     const parsedHeaders = parseUserDataHeader(userDataHeader);
 
-    const fileIdentifier = parsedHeaders["x-file-id"];
+    fileIdentifier = parsedHeaders["x-file-id"];
     const chunkIndexStr = parsedHeaders["x-chunk-index"];
     const totalChunksStr = parsedHeaders["x-total-chunks"];
     const originalFilenameUnsafe = parsedHeaders["x-original-filename"];
     
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
-        console.error("[SERVER] FATAL: Missing required fields in parsed x-userdata header.", { parsedHeaders });
-        return NextResponse.json({ error: "Could not parse required fields from x-userdata header." }, { status: 400 });
+      const errorMsg = "Missing required fields in parsed x-userdata header.";
+      await updateStatus(fileIdentifier || 'unknown_request', 'Error', errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
     const originalFilename = path.basename(originalFilenameUnsafe);
-    const safeIdentifier = path.basename(fileIdentifier);
+    const safeIdentifier = fileIdentifier.replace(/[.#$[\]/]/g, '_');
+    
+    await updateStatus(safeIdentifier, `Receiving chunk ${chunkIndex + 1}/${totalChunks}`);
 
     const chunkBuffer = await request.arrayBuffer();
     if (!chunkBuffer || chunkBuffer.byteLength === 0) {
-        return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
+      const errorMsg = "Empty chunk received.";
+      await updateStatus(safeIdentifier, 'Error', errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
     }
-    const buffer = Buffer.from(chunkBuffer);
 
-    // Get or create the chunk map for this file identifier
-    if (!chunkStore.has(safeIdentifier)) {
-      chunkStore.set(safeIdentifier, new Map<number, Buffer>());
-    }
-    const fileChunks = chunkStore.get(safeIdentifier)!;
+    // Upload chunk to Firebase Storage
+    const chunkPath = `tmp/${safeIdentifier}/${chunkIndex}.chunk`;
+    const chunkStorageRef = storageRef(storage, chunkPath);
+    await uploadBytes(chunkStorageRef, chunkBuffer);
 
-    // Store the chunk
-    fileChunks.set(chunkIndex, buffer);
-
-    console.log(`[SERVER] Stored chunk ${chunkIndex + 1}/${totalChunks} for ${originalFilename} in memory.`);
+    await updateStatus(safeIdentifier, `Stored chunk ${chunkIndex + 1}/${totalChunks} to cloud`);
 
     // If all chunks have been received, assemble the file
-    if (fileChunks.size === totalChunks) {
-      console.log(`[SERVER] All chunks received for ${originalFilename}. Assembling...`);
+    if (chunkIndex + 1 === totalChunks) {
+      await updateStatus(safeIdentifier, `All chunks received. Assembling file...`);
       
-      const chunkArray: Buffer[] = [];
-      for (let i = 0; i < totalChunks; i++) {
-        if (!fileChunks.has(i)) {
-          console.error(`[SERVER] FATAL: Missing chunk ${i} for ${originalFilename}. Aborting assembly.`);
-          chunkStore.delete(safeIdentifier); // Cleanup
-          return NextResponse.json({ error: `Missing chunk ${i} during assembly.` }, { status: 500 });
+      const chunkDirRef = storageRef(storage, `tmp/${safeIdentifier}`);
+      const chunkArray = new Array(totalChunks);
+
+      for(let i=0; i<totalChunks; i++) {
+        const chunkRef = storageRef(storage, `tmp/${safeIdentifier}/${i}.chunk`);
+        try {
+            const bytes = await getBytes(chunkRef);
+            chunkArray[i] = Buffer.from(bytes);
+        } catch(e) {
+             const errorMsg = `FATAL: Could not get chunk ${i} from cloud storage.`;
+             await updateStatus(safeIdentifier, 'Error', errorMsg);
+             console.error(errorMsg, e);
+             return NextResponse.json({ error: errorMsg }, { status: 500 });
         }
-        chunkArray.push(fileChunks.get(i)!);
       }
 
       const finalFileBuffer = Buffer.concat(chunkArray);
@@ -92,11 +118,15 @@ export async function POST(request: NextRequest) {
 
       await fs.writeFile(finalFilePath, finalFileBuffer);
       
-      console.log(`[SERVER] Successfully assembled and saved ${originalFilename} to ${finalFilePath}.`);
-      
-      // Clean up the memory for this file
-      chunkStore.delete(safeIdentifier);
-      console.log(`[SERVER] Cleaned up in-memory store for ${safeIdentifier}`);
+      await updateStatus(safeIdentifier, `File assembled successfully. Cleaning up...`);
+
+      // Clean up temporary chunks from Firebase Storage
+      const listResult = await listAll(chunkDirRef);
+      await Promise.all(listResult.items.map(item => deleteObject(item)));
+
+      // Final status update and cleanup from RTDB
+      await updateStatus(safeIdentifier, `Upload complete: ${originalFilename}`);
+      setTimeout(() => remove(dbRef(database, `uploads/${safeIdentifier}`)), 30000); // cleanup RTDB entry after 30s
 
       return NextResponse.json({ message: "File upload complete.", filename: originalFilename }, { status: 200 });
     }
@@ -106,6 +136,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[SERVER] Unhandled error in upload handler:", error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
+    const safeId = fileIdentifier.replace(/[.#$[\]/]/g, '_');
+    await updateStatus(safeId, 'Error', errorMessage);
     return NextResponse.json(
       { error: "Internal Server Error", details: errorMessage },
       { status: 500 }
