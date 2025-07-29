@@ -23,6 +23,8 @@ async function ensureUploadDirExists() {
 // This parser handles case-insensitivity by converting all keys to lowercase.
 function parseUserDataHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
+    if (!header) return result;
+
     header.split(';').forEach(pair => {
         const parts = pair.split(/:(.*)/s); // Split only on the first colon
         if (parts.length === 2) {
