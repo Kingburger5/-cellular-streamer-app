@@ -38,7 +38,11 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
     return filesWithStats;
   } catch (error) {
     console.error("Error reading files from upload directory:", error);
-    return [];
+    // If the directory doesn't exist, it's not an error, just return empty.
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return [];
+    }
+    throw error;
   }
 }
 
