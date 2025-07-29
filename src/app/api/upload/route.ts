@@ -20,13 +20,13 @@ async function ensureUploadDirExists() {
   }
 }
 
-// Simplified and more robust header parser
+// This parser handles case-insensitivity by converting all keys to lowercase.
 function parseUserDataHeader(header: string): Record<string, string> {
     const result: Record<string, string> = {};
     header.split(';').forEach(pair => {
-        const parts = pair.split(':');
+        const parts = pair.split(/:(.*)/s); // Split only on the first colon
         if (parts.length === 2) {
-            const key = parts[0].trim();
+            const key = parts[0].trim().toLowerCase(); // Lowercase the key
             const value = parts[1].trim();
             result[key] = value;
         }
@@ -53,10 +53,11 @@ export async function POST(request: NextRequest) {
 
     const parsedHeaders = parseUserDataHeader(userData);
 
-    const fileIdentifier = parsedHeaders["X-File-ID"];
-    const chunkIndexStr = parsedHeaders["X-Chunk-Index"];
-    const totalChunksStr = parsedHeaders["X-Total-Chunks"];
-    const originalFilenameUnsafe = parsedHeaders["X-Original-Filename"];
+    // Access keys in lowercase, as the parser now stores them that way.
+    const fileIdentifier = parsedHeaders["x-file-id"];
+    const chunkIndexStr = parsedHeaders["x-chunk-index"];
+    const totalChunksStr = parsedHeaders["x-total-chunks"];
+    const originalFilenameUnsafe = parsedHeaders["x-original-filename"];
     
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
         const error = "[SERVER] Missing required fields in parsed x-userdata header.";
