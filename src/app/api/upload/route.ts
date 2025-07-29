@@ -37,22 +37,23 @@ function parseUserDataHeader(header: string): Record<string, string> {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("\n--- [SERVER] New POST request received ---");
     await ensureUploadDirExists();
 
     const allHeaders = Object.fromEntries(request.headers.entries());
-    console.log(`[SERVER] Received request with headers:`, allHeaders);
+    console.log("[SERVER] All Request Headers:", allHeaders);
     
     const userData = request.headers.get("x-userdata");
 
     if (!userData) {
-      console.error("[SERVER] Missing 'x-userdata' header.");
+      console.error("[SERVER] FATAL: Missing 'x-userdata' header.");
       return NextResponse.json({ error: "Missing required x-userdata header." }, { status: 400 });
     }
     
-    console.log(`[SERVER] Received x-userdata: ${userData}`);
+    console.log(`[SERVER] Raw x-userdata header: "${userData}"`);
 
     const parsedHeaders = parseUserDataHeader(userData);
-    console.log(`[SERVER] Parsed userdata:`, parsedHeaders);
+    console.log("[SERVER] Parsed userdata object:", parsedHeaders);
 
     // Access keys in lowercase, as the parser now stores them that way.
     const fileIdentifier = parsedHeaders["x-file-id"];
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     const originalFilenameUnsafe = parsedHeaders["x-original-filename"];
     
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
-        const error = "[SERVER] Missing required fields in parsed x-userdata header.";
+        const error = "[SERVER] FATAL: Missing one or more required fields in parsed x-userdata header.";
         console.error(error, { parsedHeaders });
         return NextResponse.json({ error: error }, { status: 400 });
     }
@@ -93,7 +94,6 @@ export async function POST(request: NextRequest) {
       // Sanitize the filename to prevent directory traversal issues
       const safeFilename = path.basename(originalFilename);
       const finalFilePath = path.join(UPLOAD_DIR, safeFilename);
-
 
       // Asynchronously write file and don't await it to send response faster
       fs.writeFile(finalFilePath, fullFileBuffer).then(() => {
