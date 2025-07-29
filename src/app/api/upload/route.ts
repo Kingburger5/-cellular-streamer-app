@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
@@ -12,22 +13,49 @@ async function ensureUploadDirExists() {
   }
 }
 
+function parseUserDataHeader(header: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (!header) return result;
+
+    const pairs = header.split(';');
+    pairs.forEach(pair => {
+        const parts = pair.split(':');
+        if (parts.length === 2) {
+            const key = parts[0].trim().toLowerCase();
+            const value = parts[1].trim();
+            result[key] = value;
+        }
+    });
+    return result;
+}
+
 export async function POST(request: NextRequest) {
   try {
     await ensureUploadDirExists();
     console.log("[SERVER] Received upload request.");
+    
+    // Read the custom semicolon-delimited header string
+    const userData = request.headers.get("userdata") || request.headers.get("USERDATA");
+    console.log(`[SERVER] Raw USERDATA header: ${userData}`);
 
-    // Read metadata from custom headers (lowercase)
-    const fileIdentifier = request.headers.get("x-file-id");
-    const chunkIndexStr = request.headers.get("x-chunk-index");
-    const totalChunksStr = request.headers.get("x-total-chunks");
-    const originalFilename = request.headers.get("x-original-filename");
+    if (!userData) {
+        return NextResponse.json({ error: "Missing USERDATA header." }, { status: 400 });
+    }
+    
+    // Parse the custom header string
+    const headers = parseUserDataHeader(userData);
+    
+    const fileIdentifier = headers["x-file-id"];
+    const chunkIndexStr = headers["x-chunk-index"];
+    const totalChunksStr = headers["x-total-chunks"];
+    const originalFilename = headers["x-original-filename"];
 
-    console.log(`[SERVER] Headers: x-file-id=${fileIdentifier}, x-chunk-index=${chunkIndexStr}, x-total-chunks=${totalChunksStr}, x-original-filename=${originalFilename}`);
+
+    console.log(`[SERVER] Parsed Headers: x-file-id=${fileIdentifier}, x-chunk-index=${chunkIndexStr}, x-total-chunks=${totalChunksStr}, x-original-filename=${originalFilename}`);
 
     if (!fileIdentifier || !chunkIndexStr || !totalChunksStr || !originalFilename) {
-      console.error("[SERVER] Missing required headers.");
-      return NextResponse.json({ error: "Missing required headers." }, { status: 400 });
+      console.error("[SERVER] Missing required fields in USERDATA header.");
+      return NextResponse.json({ error: "Missing required fields in USERDATA header." }, { status: 400 });
     }
 
     const chunkIndex = parseInt(chunkIndexStr);
@@ -53,6 +81,13 @@ export async function POST(request: NextRequest) {
     if (chunkIndex === totalChunks - 1) {
       // Last chunk, rename the file
       const finalFilePath = path.join(UPLOAD_DIR, safeFilename);
+      try {
+        await fs.access(finalFilePath);
+        console.warn(`[SERVER] File ${finalFilePath} already exists. Overwriting.`);
+        await fs.unlink(finalFilePath);
+      } catch {
+        // File doesn't exist, which is fine
+      }
       await fs.rename(tempFilePath, finalFilePath);
       console.log(`[SERVER] File upload completed. Renamed ${tempFilePath} to ${finalFilePath}`);
       return NextResponse.json({ message: "File uploaded successfully.", filename: safeFilename }, { status: 200 });
