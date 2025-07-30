@@ -44,7 +44,8 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
     setUploadProgress(0);
 
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const fileIdentifier = `${file.name}-${file.size}-${file.lastModified}`;
+    // Create a unique but simple identifier for the file.
+    const fileIdentifier = `${file.name.replace(/[^a-zA-Z0-9-._]/g, '_')}-${file.size}-${file.lastModified}`;
     
     try {
         for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -52,16 +53,11 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             const end = Math.min(start + CHUNK_SIZE, file.size);
             const chunk = file.slice(start, end);
             
-            const queryParams = new URLSearchParams({
-                fileId: fileIdentifier,
-                chunkIndex: String(chunkIndex),
-                totalChunks: String(totalChunks),
-                originalFilename: file.name
-            });
-
-            const response = await fetch(`/api/upload?${queryParams.toString()}`, {
+            const response = await fetch('/api/upload', {
                 method: "POST",
                 headers: {
+                    // This is the same custom header format the SIM7600 uses.
+                    "x-userdata": `X-File-ID: ${fileIdentifier}; X-Chunk-Index: ${chunkIndex}; X-Total-Chunks: ${totalChunks}; X-Original-Filename: ${file.name}`,
                     "Content-Type": "application/octet-stream",
                 },
                 body: chunk,

@@ -4,36 +4,48 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
-const UPLOAD_DIR = path.join(process.cwd(), "uploads");
-// Use the OS's designated temporary directory, which is guaranteed to be writable.
+// Use a directory that is guaranteed to be writable in serverless environments
 const TMP_DIR = path.join(os.tmpdir(), "cellular-uploads");
 
-// Helper to ensure directories exist
+// Ensure the necessary directories exist at startup.
 async function ensureDirsExist() {
   try {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    // The final destination for completed uploads
+    const uploadDir = path.join(process.cwd(), "uploads");
+    await fs.mkdir(uploadDir, { recursive: true });
+    // The temporary storage for chunks
     await fs.mkdir(TMP_DIR, { recursive: true });
   } catch (error: any) {
-    // This is a critical failure, log it and re-throw
-    console.error("[SERVER] Fatal: Could not create server directories.", {
-        uploadDir: UPLOAD_DIR,
-        tmpDir: TMP_DIR,
-        error: error.message,
+    console.error("[SERVER] FATAL: Could not create server directories.", {
+      error: error.message,
     });
-    throw new Error("Could not create server directories.");
+    // If we can't create directories, the service can't run.
+    throw new Error("Server directory initialization failed.");
   }
 }
 
+// Call once when the module loads.
+ensureDirsExist().catch(e => {
+    // We log the error here. The server will likely fail to start,
+    // but this gives a clear indication of why.
+    console.error(e);
+    process.exit(1);
+});
+
+// A robust function to parse the specific "key: value; key: value" format
+// from the SIM7600 USERDATA header. It is case-insensitive and safe.
 function parseUserDataHeader(header: string | null): Record<string, string> {
     const data: Record<string, string> = {};
     if (!header) {
         return data;
     }
+    // Split by semicolon to get "key: value" pairs
     const pairs = header.split(';').map(s => s.trim());
     for (const pair of pairs) {
+        // Split by the first colon to separate key and value
         const parts = pair.split(/:(.*)/s);
         if (parts.length === 2) {
-            // Lowercase the key for case-insensitive matching, as per HTTP header standards.
+            // Standardize the key to lowercase to handle any casing issues
             const key = parts[0].trim().toLowerCase();
             const value = parts[1].trim();
             data[key] = value;
@@ -44,10 +56,12 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureDirsExist();
-    
-    // The SIM7600 AT+HTTPPARA="USERDATA" sends a custom header.
-    // Next.js automatically lowercases all incoming header names.
+    const chunkBuffer = await request.arrayBuffer();
+    if (!chunkBuffer || chunkBuffer.byteLength === 0) {
+      return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
+    }
+
+    // Next.js lowercases all incoming header names.
     const userData = parseUserDataHeader(request.headers.get("x-userdata"));
 
     const fileId = userData['x-file-id'];
@@ -63,27 +77,23 @@ export async function POST(request: NextRequest) {
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
 
-    // Sanitize the filename to remove characters that are invalid in file paths.
-    const originalFilename = path.basename(originalFilenameUnsafe).replace(/[^a-zA-Z0-9-._]/g, '_');
-    // Sanitize the fileId as it's used to create a directory
+    // Sanitize identifiers to be safe for use as file/directory names
     const safeIdentifier = fileId.replace(/[^a-zA-Z0-9-._]/g, '_');
+    const originalFilename = path.basename(originalFilenameUnsafe).replace(/[^a-zA-Z0-9-._]/g, '_');
 
-    const chunkBuffer = await request.arrayBuffer();
-    if (!chunkBuffer || chunkBuffer.byteLength === 0) {
-      console.error(`[SERVER] Received empty chunk for ${safeIdentifier} index ${chunkIndex}`);
-      return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
-    }
-
+    // Create a unique directory for this specific upload
     const chunkDir = path.join(TMP_DIR, safeIdentifier);
     await fs.mkdir(chunkDir, { recursive: true });
+
+    // Write the current chunk to its own file
     const chunkFilePath = path.join(chunkDir, `${chunkIndex}.chunk`);
     await fs.writeFile(chunkFilePath, Buffer.from(chunkBuffer));
 
-    // Check if all chunks have been received
+    // Check if this is the last chunk
     const isUploadComplete = (chunkIndex + 1) === totalChunks;
 
     if (isUploadComplete) {
-      const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
+      const finalFilePath = path.join(process.cwd(), "uploads", originalFilename);
       
       try {
         const fileHandle = await fs.open(finalFilePath, 'w');
@@ -93,30 +103,30 @@ export async function POST(request: NextRequest) {
              const chunkData = await fs.readFile(tempChunkPath);
              await fileHandle.write(chunkData);
           } catch (readError: any) {
-            // This is a critical race condition where a chunk might not be fully written yet.
-            // Wait a moment and retry once.
-            console.warn(`[SERVER] Chunk ${i} not ready for ${safeIdentifier}, retrying... Details: ${readError.message}`);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            try {
-                const chunkData = await fs.readFile(tempChunkPath);
-                await fileHandle.write(chunkData);
-            } catch(retryError: any) {
-                console.error(`[SERVER] FATAL: Retry failed for chunk ${i} of ${safeIdentifier}. Aborting assembly. Details: ${retryError.message}`);
-                await fileHandle.close().catch(() => {}); // Attempt to close the handle
-                await fs.unlink(finalFilePath).catch(() => {}); // Attempt to delete the partial file
-                throw new Error(`Failed to read chunk ${i} on retry.`);
-            }
+             // This is a critical race condition where a chunk might not be fully written yet.
+             // Wait a moment and retry once.
+             console.warn(`[SERVER] Chunk ${i} not ready for ${safeIdentifier}, retrying...`);
+             await new Promise(resolve => setTimeout(resolve, 500));
+             try {
+                 const chunkData = await fs.readFile(tempChunkPath);
+                 await fileHandle.write(chunkData);
+             } catch(retryError: any) {
+                 console.error(`[SERVER] FATAL: Retry failed for chunk ${i} of ${safeIdentifier}.`);
+                 await fileHandle.close().catch(() => {}); // Attempt to close the handle
+                 await fs.unlink(finalFilePath).catch(() => {}); // Attempt to delete the partial file
+                 throw new Error(`Failed to read chunk ${i} on retry.`);
+             }
           }
         }
         await fileHandle.close();
       } catch (e: any) {
         console.error(`[SERVER] FATAL: Could not assemble file for ${safeIdentifier}`, e);
-        // Cleanup failed assembly
+        // Best-effort cleanup of temporary directory
         await fs.rm(chunkDir, { recursive: true, force: true }).catch(err => console.error(`Error cleaning up chunk dir: ${err.message}`));
         return NextResponse.json({ error: `Failed to assemble file: ${e.message}` }, { status: 500 });
       }
       
-      // Cleanup successful assembly
+      // Best-effort cleanup of temporary directory on success
       await fs.rm(chunkDir, { recursive: true, force: true }).catch(err => console.error(`Error cleaning up chunk dir: ${err.message}`));
       
       console.log(`[SERVER] Successfully assembled file: ${originalFilename}`);
