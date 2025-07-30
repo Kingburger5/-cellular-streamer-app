@@ -9,7 +9,7 @@ const TMP_DIR = path.join(process.cwd(), "tmp");
 // Helper to ensure directories exist
 async function ensureDirsExist() {
   try {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    await fs.mkdir(UPLOAD_DUR, { recursive: true });
     await fs.mkdir(TMP_DIR, { recursive: true });
   } catch (error: any) {
     if (error.code !== 'EEXIST') {
@@ -19,27 +19,47 @@ async function ensureDirsExist() {
   }
 }
 
+function parseUserDataHeader(header: string | null): Record<string, string> {
+    const data: Record<string, string> = {};
+    if (!header) {
+        return data;
+    }
+    const pairs = header.split(';').map(s => s.trim());
+    for (const pair of pairs) {
+        const parts = pair.split(/:(.*)/s);
+        if (parts.length === 2) {
+            const key = parts[0].trim().toLowerCase();
+            const value = parts[1].trim();
+            data[key] = value;
+        }
+    }
+    return data;
+}
+
+
 export async function POST(request: NextRequest) {
   try {
     await ensureDirsExist();
     
-    const { searchParams } = new URL(request.url);
+    // The SIM7600G AT+HTTPPARA="USERDATA" sends metadata as a single header named "x-userdata"
+    const userData = parseUserDataHeader(request.headers.get("x-userdata"));
 
-    const fileId = searchParams.get('fileId');
-    const chunkIndexStr = searchParams.get('chunkIndex');
-    const totalChunksStr = searchParams.get('totalChunks');
-    const originalFilenameUnsafe = searchParams.get('originalFilename');
+    const fileId = userData['x-file-id'];
+    const chunkIndexStr = userData['x-chunk-index'];
+    const totalChunksStr = userData['x-total-chunks'];
+    const originalFilenameUnsafe = userData['x-original-filename'];
+
 
     if (!fileId || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
-        console.error("[SERVER] Missing required query parameters", { 
-            fileId, chunkIndexStr, totalChunksStr, originalFilenameUnsafe 
-        });
-        return NextResponse.json({ error: "Missing required query parameters." }, { status: 400 });
+        console.error("[SERVER] Missing required headers", { userData });
+        return NextResponse.json({ error: "Missing required headers." }, { status: 400 });
     }
-
+    
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
-    const originalFilename = path.basename(originalFilenameUnsafe);
+
+    // Sanitize the filename to remove characters that are invalid in file paths.
+    const originalFilename = path.basename(originalFilenameUnsafe).replace(/[^a-zA-Z0-9-._]/g, '_');
     const safeIdentifier = fileId.replace(/[^a-zA-Z0-9-._]/g, '_');
 
     const chunkBuffer = await request.arrayBuffer();
@@ -61,8 +81,6 @@ export async function POST(request: NextRequest) {
         const fileHandle = await fs.open(finalFilePath, 'w');
         for (let i = 0; i < totalChunks; i++) {
           const tempChunkPath = path.join(chunkDir, `${i}.chunk`);
-          // It's possible for a chunk to not have been written yet.
-          // Add a small delay and retry.
           try {
              const chunkData = await fs.readFile(tempChunkPath);
              await fileHandle.write(chunkData);
@@ -76,9 +94,7 @@ export async function POST(request: NextRequest) {
         await fileHandle.close();
       } catch (e) {
         console.error(`[SERVER] FATAL: Could not assemble file for ${safeIdentifier}`, e);
-        // Clean up potentially corrupted file
         await fs.unlink(finalFilePath).catch(() => {});
-        // Also clean up temp chunks
         await fs.rm(chunkDir, { recursive: true, force: true }).catch(() => {});
         return NextResponse.json({ error: `Failed to assemble file.` }, { status: 500 });
       }
@@ -89,7 +105,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "File upload complete.", filename: originalFilename }, { status: 200 });
     }
 
-    // Acknowledge receipt of the chunk
     return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
 
   } catch (error) {
