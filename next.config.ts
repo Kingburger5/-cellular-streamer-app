@@ -18,6 +18,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Required for handling secure headers in a proxied environment
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'x-forwarded-proto',
+            value: 'https',
+          },
+        ],
+      },
+    ]
+  },
 };
 
 export default nextConfig;
