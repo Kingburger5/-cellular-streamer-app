@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
     const userDataHeader = request.headers.get("x-userdata");
 
     if (!userDataHeader) {
+      console.error("[SERVER] Fatal: Missing x-userdata header.", { headers: request.headers });
       return NextResponse.json({ error: "Fatal: Missing x-userdata header." }, { status: 400 });
     }
    
@@ -84,23 +85,21 @@ export async function POST(request: NextRequest) {
     // If all chunks have been received, assemble the file
     if (chunkIndex + 1 === totalChunks) {
       const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
-      const fileWriteStream = await fs.open(finalFilePath, 'w');
-
-      for (let i = 0; i < totalChunks; i++) {
-        const tempChunkPath = path.join(chunkDir, `${i}.chunk`);
-        try {
-            const chunkData = await fs.readFile(tempChunkPath);
-            await fileWriteStream.write(chunkData);
-        } catch (e) {
-            console.error(`[SERVER] FATAL: Could not read chunk ${i} for ${safeIdentifier}`, e);
-            await fileWriteStream.close();
-            // Clean up potentially corrupted file
-            await fs.unlink(finalFilePath).catch(() => {});
-            return NextResponse.json({ error: `Failed to assemble file, could not read chunk ${i}.` }, { status: 500 });
-        }
-      }
       
-      await fileWriteStream.close();
+      try {
+        const fileHandle = await fs.open(finalFilePath, 'w');
+        for (let i = 0; i < totalChunks; i++) {
+          const tempChunkPath = path.join(chunkDir, `${i}.chunk`);
+          const chunkData = await fs.readFile(tempChunkPath);
+          await fileHandle.write(chunkData);
+        }
+        await fileHandle.close();
+      } catch (e) {
+        console.error(`[SERVER] FATAL: Could not assemble file for ${safeIdentifier}`, e);
+        // Clean up potentially corrupted file
+        await fs.unlink(finalFilePath).catch(() => {});
+        return NextResponse.json({ error: `Failed to assemble file.` }, { status: 500 });
+      }
       
       // Clean up temporary chunk directory
       await fs.rm(chunkDir, { recursive: true, force: true });

@@ -8,7 +8,7 @@ import { UploadCloud, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatBytes } from "@/lib/utils";
 
-const CHUNK_SIZE = 1024 * 1024; // 1MB
+const CHUNK_SIZE = 1024 * 512; // 512KB
 
 interface FileUploaderProps {
     onUploadComplete: () => void;
@@ -77,6 +77,10 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
         
         // Give server a moment to process the final chunk and save the file
         setTimeout(() => {
+            toast({
+                title: "Upload Successful",
+                description: "Your file has been processed and is now available.",
+            });
             onUploadComplete();
             resetState();
         }, 1000);

@@ -68,25 +68,21 @@ export function MainView({ initialFiles }: MainViewProps) {
 
   const handleUploadComplete = useCallback(async () => {
     startRefreshTransition(async () => {
-        toast({
-            title: "Upload Successful",
-            description: "Your file has been processed and is now available.",
-        });
         const refreshedFiles = await handleRefresh(true);
         if (refreshedFiles.length > 0 && refreshedFiles.length > files.length) {
-            const newFile = refreshedFiles.find(f1 => !files.some(f2 => f2.name === f1.name));
+            const newFile = refreshedFiles[0]; // Just select the newest file
             if (newFile) {
                 handleSelectFile(newFile.name);
             }
         }
     });
-  }, [toast, handleRefresh, handleSelectFile, files]);
+  }, [handleRefresh, handleSelectFile, files.length]);
 
   useEffect(() => {
     if (fileContent && extractedData) {
         setFileContent(current => current ? {...current, extractedData: extractedData} : null);
     }
-  }, [extractedData]);
+  }, [extractedData, fileContent]);
 
   const handleDeleteFile = useCallback((name: string) => {
      startRefreshTransition(async () => {
