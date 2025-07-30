@@ -2,20 +2,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
-const TMP_DIR = path.join(process.cwd(), "tmp");
+// Use the OS's designated temporary directory, which is guaranteed to be writable.
+const TMP_DIR = path.join(os.tmpdir(), "cellular-uploads");
 
 // Helper to ensure directories exist
 async function ensureDirsExist() {
   try {
-    await fs.mkdir(UPLOAD_DUR, { recursive: true });
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
     await fs.mkdir(TMP_DIR, { recursive: true });
   } catch (error: any) {
-    if (error.code !== 'EEXIST') {
-      console.error("[SERVER] Fatal: Could not create server directories.", error);
-      throw new Error("Could not create server directories.");
-    }
+    // This is a critical failure, log it and re-throw
+    console.error("[SERVER] Fatal: Could not create server directories.", {
+        uploadDir: UPLOAD_DIR,
+        tmpDir: TMP_DIR,
+        error: error.message,
+    });
+    throw new Error("Could not create server directories.");
   }
 }
 
@@ -26,8 +31,10 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
     }
     const pairs = header.split(';').map(s => s.trim());
     for (const pair of pairs) {
+        // Split only on the first colon to handle potential colons in values
         const parts = pair.split(/:(.*)/s);
         if (parts.length === 2) {
+            // Lowercase the key for case-insensitive matching
             const key = parts[0].trim().toLowerCase();
             const value = parts[1].trim();
             data[key] = value;
@@ -36,12 +43,12 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
     return data;
 }
 
-
 export async function POST(request: NextRequest) {
   try {
     await ensureDirsExist();
     
-    // The SIM7600G AT+HTTPPARA="USERDATA" sends metadata as a single header named "x-userdata"
+    // The SIM7600G AT+HTTPPARA="USERDATA" sends metadata as a single header named "x-userdata".
+    // Next.js automatically lowercases all incoming header names.
     const userData = parseUserDataHeader(request.headers.get("x-userdata"));
 
     const fileId = userData['x-file-id'];
@@ -49,10 +56,9 @@ export async function POST(request: NextRequest) {
     const totalChunksStr = userData['x-total-chunks'];
     const originalFilenameUnsafe = userData['x-original-filename'];
 
-
     if (!fileId || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
         console.error("[SERVER] Missing required headers", { userData });
-        return NextResponse.json({ error: "Missing required headers." }, { status: 400 });
+        return NextResponse.json({ error: "Missing required x-file-id, x-chunk-index, x-total-chunks, or x-original-filename header." }, { status: 400 });
     }
     
     const chunkIndex = parseInt(chunkIndexStr);
@@ -60,6 +66,7 @@ export async function POST(request: NextRequest) {
 
     // Sanitize the filename to remove characters that are invalid in file paths.
     const originalFilename = path.basename(originalFilenameUnsafe).replace(/[^a-zA-Z0-9-._]/g, '_');
+    // Sanitize the fileId as it's used to create a directory
     const safeIdentifier = fileId.replace(/[^a-zA-Z0-9-._]/g, '_');
 
     const chunkBuffer = await request.arrayBuffer();
@@ -73,8 +80,10 @@ export async function POST(request: NextRequest) {
     const chunkFilePath = path.join(chunkDir, `${chunkIndex}.chunk`);
     await fs.writeFile(chunkFilePath, Buffer.from(chunkBuffer));
 
-    // If all chunks have been received, assemble the file
-    if (chunkIndex + 1 === totalChunks) {
+    // Check if all chunks have been received
+    const isUploadComplete = (chunkIndex + 1) === totalChunks;
+
+    if (isUploadComplete) {
       const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
       
       try {
@@ -84,22 +93,32 @@ export async function POST(request: NextRequest) {
           try {
              const chunkData = await fs.readFile(tempChunkPath);
              await fileHandle.write(chunkData);
-          } catch (readError) {
-             console.log(`[SERVER] Chunk ${i} not ready for ${safeIdentifier}, retrying...`);
-             await new Promise(resolve => setTimeout(resolve, 500));
-             const chunkData = await fs.readFile(tempChunkPath);
-             await fileHandle.write(chunkData);
+          } catch (readError: any) {
+            // This is a critical race condition where a chunk might not be fully written yet.
+            // Wait a moment and retry once.
+            console.warn(`[SERVER] Chunk ${i} not ready for ${safeIdentifier}, retrying... Details: ${readError.message}`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+                const chunkData = await fs.readFile(tempChunkPath);
+                await fileHandle.write(chunkData);
+            } catch(retryError: any) {
+                console.error(`[SERVER] FATAL: Retry failed for chunk ${i} of ${safeIdentifier}. Aborting assembly. Details: ${retryError.message}`);
+                await fileHandle.close().catch(() => {}); // Attempt to close the handle
+                await fs.unlink(finalFilePath).catch(() => {}); // Attempt to delete the partial file
+                throw new Error(`Failed to read chunk ${i} on retry.`);
+            }
           }
         }
         await fileHandle.close();
-      } catch (e) {
+      } catch (e: any) {
         console.error(`[SERVER] FATAL: Could not assemble file for ${safeIdentifier}`, e);
-        await fs.unlink(finalFilePath).catch(() => {});
-        await fs.rm(chunkDir, { recursive: true, force: true }).catch(() => {});
-        return NextResponse.json({ error: `Failed to assemble file.` }, { status: 500 });
+        // Cleanup failed assembly
+        await fs.rm(chunkDir, { recursive: true, force: true }).catch(err => console.error(`Error cleaning up chunk dir: ${err.message}`));
+        return NextResponse.json({ error: `Failed to assemble file: ${e.message}` }, { status: 500 });
       }
       
-      await fs.rm(chunkDir, { recursive: true, force: true });
+      // Cleanup successful assembly
+      await fs.rm(chunkDir, { recursive: true, force: true }).catch(err => console.error(`Error cleaning up chunk dir: ${err.message}`));
       
       console.log(`[SERVER] Successfully assembled file: ${originalFilename}`);
       return NextResponse.json({ message: "File upload complete.", filename: originalFilename }, { status: 200 });
@@ -107,8 +126,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
 
-  } catch (error) {
-    console.error("[SERVER] Unhandled error in upload handler:", error);
+  } catch (error: any) {
+    console.error("[SERVER] Unhandled error in upload handler:", error.stack);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
     return NextResponse.json(
       { error: "Internal Server Error", details: errorMessage },
