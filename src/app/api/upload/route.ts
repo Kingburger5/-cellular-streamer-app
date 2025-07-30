@@ -13,70 +13,41 @@ async function ensureDirsExist() {
     await fs.mkdir(TMP_DIR, { recursive: true });
   } catch (error: any) {
     if (error.code !== 'EEXIST') {
-      console.error("[SERVER] Error creating directories:", error);
+      console.error("[SERVER] Fatal: Could not create server directories.", error);
       throw new Error("Could not create server directories.");
     }
   }
 }
 
-// Custom parser for the USERDATA header format.
-function parseUserDataHeader(header: string | null): Record<string, string> {
-    const data: Record<string, string> = {};
-    if (!header) return data;
-
-    // The header value is a single string like:
-    // "X-File-ID: ...; X-Chunk-Index: ...; ..."
-    header.split(';').forEach(part => {
-        const firstColonIndex = part.indexOf(':');
-        if (firstColonIndex !== -1) {
-            const key = part.substring(0, firstColonIndex).trim().toLowerCase();
-            const value = part.substring(firstColonIndex + 1).trim();
-            data[key] = value;
-        }
-    });
-    return data;
-}
-
 export async function POST(request: NextRequest) {
-  let fileIdentifier = "unknown_request";
-  
   try {
     await ensureDirsExist();
     
-    // The SIM7600 AT+HTTPPARA="USERDATA" command sends the data in a proprietary way.
-    // Next.js correctly interprets this and makes it available as the 'x-userdata' header.
-    const userDataHeader = request.headers.get("x-userdata");
+    const { searchParams } = new URL(request.url);
 
-    if (!userDataHeader) {
-      console.error("[SERVER] Fatal: Missing x-userdata header.", { headers: request.headers });
-      return NextResponse.json({ error: "Fatal: Missing x-userdata header." }, { status: 400 });
-    }
-   
-    const parsedHeaders = parseUserDataHeader(userDataHeader);
-    
-    const chunkIndexStr = parsedHeaders["x-chunk-index"];
-    const totalChunksStr = parsedHeaders["x-total-chunks"];
-    const originalFilenameUnsafe = parsedHeaders["x-original-filename"];
-    fileIdentifier = parsedHeaders["x-file-id"] || fileIdentifier;
+    const fileId = searchParams.get('fileId');
+    const chunkIndexStr = searchParams.get('chunkIndex');
+    const totalChunksStr = searchParams.get('totalChunks');
+    const originalFilenameUnsafe = searchParams.get('originalFilename');
 
-    if (!chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe || !fileIdentifier) {
-      console.error("[SERVER] Missing required fields in parsed headers:", parsedHeaders);
-      return NextResponse.json({ error: "Missing required fields in x-userdata header." }, { status: 400 });
+    if (!fileId || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
+        console.error("[SERVER] Missing required query parameters", { 
+            fileId, chunkIndexStr, totalChunksStr, originalFilenameUnsafe 
+        });
+        return NextResponse.json({ error: "Missing required query parameters." }, { status: 400 });
     }
-    
+
     const chunkIndex = parseInt(chunkIndexStr);
     const totalChunks = parseInt(totalChunksStr);
-    
-    // Sanitize filename to prevent directory traversal attacks.
     const originalFilename = path.basename(originalFilenameUnsafe);
-    const safeIdentifier = fileIdentifier.replace(/[^a-zA-Z0-9-._]/g, '_');
+    const safeIdentifier = fileId.replace(/[^a-zA-Z0-9-._]/g, '_');
 
     const chunkBuffer = await request.arrayBuffer();
     if (!chunkBuffer || chunkBuffer.byteLength === 0) {
+      console.error(`[SERVER] Received empty chunk for ${safeIdentifier} index ${chunkIndex}`);
       return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
     }
 
-    // Write chunk to a temporary file
     const chunkDir = path.join(TMP_DIR, safeIdentifier);
     await fs.mkdir(chunkDir, { recursive: true });
     const chunkFilePath = path.join(chunkDir, `${chunkIndex}.chunk`);
@@ -90,18 +61,28 @@ export async function POST(request: NextRequest) {
         const fileHandle = await fs.open(finalFilePath, 'w');
         for (let i = 0; i < totalChunks; i++) {
           const tempChunkPath = path.join(chunkDir, `${i}.chunk`);
-          const chunkData = await fs.readFile(tempChunkPath);
-          await fileHandle.write(chunkData);
+          // It's possible for a chunk to not have been written yet.
+          // Add a small delay and retry.
+          try {
+             const chunkData = await fs.readFile(tempChunkPath);
+             await fileHandle.write(chunkData);
+          } catch (readError) {
+             console.log(`[SERVER] Chunk ${i} not ready for ${safeIdentifier}, retrying...`);
+             await new Promise(resolve => setTimeout(resolve, 500));
+             const chunkData = await fs.readFile(tempChunkPath);
+             await fileHandle.write(chunkData);
+          }
         }
         await fileHandle.close();
       } catch (e) {
         console.error(`[SERVER] FATAL: Could not assemble file for ${safeIdentifier}`, e);
         // Clean up potentially corrupted file
         await fs.unlink(finalFilePath).catch(() => {});
+        // Also clean up temp chunks
+        await fs.rm(chunkDir, { recursive: true, force: true }).catch(() => {});
         return NextResponse.json({ error: `Failed to assemble file.` }, { status: 500 });
       }
       
-      // Clean up temporary chunk directory
       await fs.rm(chunkDir, { recursive: true, force: true });
       
       console.log(`[SERVER] Successfully assembled file: ${originalFilename}`);

@@ -44,7 +44,6 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
     setUploadProgress(0);
 
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    // Use a unique file identifier based on file properties
     const fileIdentifier = `${file.name}-${file.size}-${file.lastModified}`;
     
     try {
@@ -53,16 +52,17 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             const end = Math.min(start + CHUNK_SIZE, file.size);
             const chunk = file.slice(start, end);
             
-            // This header format now matches what the Arduino device sends.
-            const userData = `X-File-ID: ${fileIdentifier}; X-Chunk-Index: ${chunkIndex}; X-Total-Chunks: ${totalChunks}; X-Original-Filename: ${file.name}`;
+            const queryParams = new URLSearchParams({
+                fileId: fileIdentifier,
+                chunkIndex: String(chunkIndex),
+                totalChunks: String(totalChunks),
+                originalFilename: file.name
+            });
 
-            const response = await fetch("/api/upload", {
+            const response = await fetch(`/api/upload?${queryParams.toString()}`, {
                 method: "POST",
                 headers: {
-                    // This is a standard header, but our server uses a custom one for consistency.
                     "Content-Type": "application/octet-stream",
-                    // Custom header that bundles all metadata.
-                    "x-userdata": userData,
                 },
                 body: chunk,
             });
@@ -75,7 +75,6 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             setUploadProgress(((chunkIndex + 1) / totalChunks) * 100);
         }
         
-        // Give server a moment to process the final chunk and save the file
         setTimeout(() => {
             toast({
                 title: "Upload Successful",
@@ -84,7 +83,6 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             onUploadComplete();
             resetState();
         }, 1000);
-
 
     } catch (error) {
         console.error("Upload failed:", error);
