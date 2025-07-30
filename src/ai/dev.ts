@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
 config();
 
-import '@/ai/flows/summarize-file.ts';
-import '@/ai/flows/extract-data-flow.ts';
+// Intentionally left blank to prevent AI flows from loading and crashing the server
+// due to missing API keys. The cellular upload endpoint does not use these flows.
