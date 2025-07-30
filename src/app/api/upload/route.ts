@@ -4,29 +4,6 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
-// A robust function to parse the specific "key: value; key: value" format
-// from the SIM7600 USERDATA header. It is case-insensitive and safe.
-function parseUserDataHeader(header: string | null): Record<string, string> {
-    const data: Record<string, string> = {};
-    if (!header) {
-        return data;
-    }
-    // Split by semicolon to get "key: value" pairs
-    const pairs = header.split(';').map(s => s.trim());
-    for (const pair of pairs) {
-        // Split by the first colon to separate key and value
-        const parts = pair.split(/:(.*)/s);
-        if (parts.length === 2) {
-            // Standardize the key to lowercase to handle any casing issues
-            const key = parts[0].trim().toLowerCase();
-            const value = parts[1].trim();
-            data[key] = value;
-        }
-    }
-    return data;
-}
-
-
 // Helper function to read the entire request stream into a buffer.
 // This is necessary because request.arrayBuffer() can be unreliable with streamed sources.
 async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -45,21 +22,40 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffe
 
 export async function POST(request: NextRequest) {
   try {
-    // Use a directory that is guaranteed to be writable in serverless environments
+    // This is the guaranteed writable temporary directory in a serverless environment.
     const TMP_DIR = path.join(os.tmpdir(), "cellular-uploads");
     await fs.mkdir(TMP_DIR, { recursive: true });
 
+    // All logic is now self-contained in the POST handler.
     // Next.js lowercases all incoming header names.
-    const userData = parseUserDataHeader(request.headers.get("x-userdata"));
+    const userDataHeader = request.headers.get("x-userdata");
 
-    const fileId = userData['x-file-id'];
-    const chunkIndexStr = userData['x-chunk-index'];
-    const totalChunksStr = userData['x-total-chunks'];
-    const originalFilenameUnsafe = userData['x-original-filename'];
+    if (!userDataHeader) {
+      return NextResponse.json({ error: "Missing x-userdata header." }, { status: 400 });
+    }
+
+    // Safely parse the header.
+    const data: Record<string, string> = {};
+    const pairs = userDataHeader.split(';').map(s => s.trim());
+    for (const pair of pairs) {
+        const parts = pair.split(/:(.*)/s);
+        if (parts.length === 2) {
+            // Standardize the key to lowercase to handle any casing issues.
+            const key = parts[0].trim().toLowerCase();
+            const value = parts[1].trim();
+            data[key] = value;
+        }
+    }
+
+    const fileId = data['x-file-id'];
+    const chunkIndexStr = data['x-chunk-index'];
+    const totalChunksStr = data['x-total-chunks'];
+    const originalFilenameUnsafe = data['x-original-filename'];
+
 
     if (!fileId || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
-        console.error("[SERVER] Missing required headers", { userData });
-        return NextResponse.json({ error: "Missing one or more required headers: x-file-id, x-chunk-index, x-total-chunks, x-original-filename." }, { status: 400 });
+        console.error("[SERVER] Missing required fields in x-userdata header", { data });
+        return NextResponse.json({ error: "Missing one or more required fields in x-userdata header: x-file-id, x-chunk-index, x-total-chunks, x-original-filename." }, { status: 400 });
     }
     
     // Read the body as a stream, which is more robust.
