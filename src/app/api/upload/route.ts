@@ -31,10 +31,9 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
     }
     const pairs = header.split(';').map(s => s.trim());
     for (const pair of pairs) {
-        // Split only on the first colon to handle potential colons in values
         const parts = pair.split(/:(.*)/s);
         if (parts.length === 2) {
-            // Lowercase the key for case-insensitive matching
+            // Lowercase the key for case-insensitive matching, as per HTTP header standards.
             const key = parts[0].trim().toLowerCase();
             const value = parts[1].trim();
             data[key] = value;
@@ -47,7 +46,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureDirsExist();
     
-    // The SIM7600G AT+HTTPPARA="USERDATA" sends metadata as a single header named "x-userdata".
+    // The SIM7600 AT+HTTPPARA="USERDATA" sends a custom header.
     // Next.js automatically lowercases all incoming header names.
     const userData = parseUserDataHeader(request.headers.get("x-userdata"));
 
