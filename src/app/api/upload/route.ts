@@ -4,34 +4,6 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
-// Use a directory that is guaranteed to be writable in serverless environments
-const TMP_DIR = path.join(os.tmpdir(), "cellular-uploads");
-
-// Ensure the necessary directories exist at startup.
-async function ensureDirsExist() {
-  try {
-    // The final destination for completed uploads
-    const uploadDir = path.join(process.cwd(), "uploads");
-    await fs.mkdir(uploadDir, { recursive: true });
-    // The temporary storage for chunks
-    await fs.mkdir(TMP_DIR, { recursive: true });
-  } catch (error: any) {
-    console.error("[SERVER] FATAL: Could not create server directories.", {
-      error: error.message,
-    });
-    // If we can't create directories, the service can't run.
-    throw new Error("Server directory initialization failed.");
-  }
-}
-
-// Call once when the module loads.
-ensureDirsExist().catch(e => {
-    // We log the error here. The server will likely fail to start,
-    // but this gives a clear indication of why.
-    console.error(e);
-    process.exit(1);
-});
-
 // A robust function to parse the specific "key: value; key: value" format
 // from the SIM7600 USERDATA header. It is case-insensitive and safe.
 function parseUserDataHeader(header: string | null): Record<string, string> {
@@ -54,12 +26,28 @@ function parseUserDataHeader(header: string | null): Record<string, string> {
     return data;
 }
 
+
+// Helper function to read the entire request stream into a buffer.
+// This is necessary because request.arrayBuffer() can be unreliable with streamed sources.
+async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+        chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+}
+
+
 export async function POST(request: NextRequest) {
   try {
-    const chunkBuffer = await request.arrayBuffer();
-    if (!chunkBuffer || chunkBuffer.byteLength === 0) {
-      return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
-    }
+    // Use a directory that is guaranteed to be writable in serverless environments
+    const TMP_DIR = path.join(os.tmpdir(), "cellular-uploads");
+    await fs.mkdir(TMP_DIR, { recursive: true });
 
     // Next.js lowercases all incoming header names.
     const userData = parseUserDataHeader(request.headers.get("x-userdata"));
@@ -71,11 +59,21 @@ export async function POST(request: NextRequest) {
 
     if (!fileId || !chunkIndexStr || !totalChunksStr || !originalFilenameUnsafe) {
         console.error("[SERVER] Missing required headers", { userData });
-        return NextResponse.json({ error: "Missing required x-file-id, x-chunk-index, x-total-chunks, or x-original-filename header." }, { status: 400 });
+        return NextResponse.json({ error: "Missing one or more required headers: x-file-id, x-chunk-index, x-total-chunks, x-original-filename." }, { status: 400 });
     }
     
-    const chunkIndex = parseInt(chunkIndexStr);
-    const totalChunks = parseInt(totalChunksStr);
+    // Read the body as a stream, which is more robust.
+    if (!request.body) {
+         return NextResponse.json({ error: "Empty request body." }, { status: 400 });
+    }
+    const chunkBuffer = await streamToBuffer(request.body);
+    
+    if (!chunkBuffer || chunkBuffer.byteLength === 0) {
+      return NextResponse.json({ error: "Empty chunk received." }, { status: 400 });
+    }
+    
+    const chunkIndex = parseInt(chunkIndexStr, 10);
+    const totalChunks = parseInt(totalChunksStr, 10);
 
     // Sanitize identifiers to be safe for use as file/directory names
     const safeIdentifier = fileId.replace(/[^a-zA-Z0-9-._]/g, '_');
@@ -87,13 +85,15 @@ export async function POST(request: NextRequest) {
 
     // Write the current chunk to its own file
     const chunkFilePath = path.join(chunkDir, `${chunkIndex}.chunk`);
-    await fs.writeFile(chunkFilePath, Buffer.from(chunkBuffer));
+    await fs.writeFile(chunkFilePath, chunkBuffer);
 
     // Check if this is the last chunk
     const isUploadComplete = (chunkIndex + 1) === totalChunks;
 
     if (isUploadComplete) {
-      const finalFilePath = path.join(process.cwd(), "uploads", originalFilename);
+      const finalUploadDir = path.join(process.cwd(), "uploads");
+      await fs.mkdir(finalUploadDir, { recursive: true });
+      const finalFilePath = path.join(finalUploadDir, originalFilename);
       
       try {
         const fileHandle = await fs.open(finalFilePath, 'w');
