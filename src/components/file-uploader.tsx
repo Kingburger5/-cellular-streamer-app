@@ -56,8 +56,8 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             const response = await fetch('/api/upload', {
                 method: "POST",
                 headers: {
-                    // This is the same custom header format the SIM7600 uses.
-                    "x-userdata": `X-File-ID: ${fileIdentifier}; X-Chunk-Index: ${chunkIndex}; X-Total-Chunks: ${totalChunks}; X-Original-Filename: ${file.name}`,
+                    // Match the lowercase keys expected by the server.
+                    "x-userdata": `x-file-id: ${fileIdentifier}; x-chunk-index: ${chunkIndex}; x-total-chunks: ${totalChunks}; x-original-filename: ${file.name}`,
                     "Content-Type": "application/octet-stream",
                 },
                 body: chunk,
