@@ -61,7 +61,7 @@ export function MainView({ initialFiles }: MainViewProps) {
       setFileContent(contentResult);
 
       startDataTransition(async () => {
-        const data = await getExtractedDataAction(contentResult.rawMetadata);
+        const data = await getExtractedDataAction(contentResult.rawMetadata, contentResult.name);
         // Now update the state with the extracted data
         setFileContent(current => current ? { ...current, extractedData: data } : null);
       });

@@ -6,10 +6,17 @@ export interface UploadedFile {
 }
 
 export interface DataPoint {
+  // New fields from Google Sheet spec
+  siteName?: string;
+  surveyDate?: string; // Format: YYYY-MM-DD
+  surveyFinishTime?: string; // Format: HH:MM:SS
+
+  // Original fields
   timestamp: string;
   latitude: number;
   longitude: number;
   temperature: number;
+  length?: number; // Added to calculate finish time
   flybys?: number;
   sampleRate?: number;
   minTriggerFreq?: number;

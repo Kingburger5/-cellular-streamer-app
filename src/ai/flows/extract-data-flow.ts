@@ -1,7 +1,7 @@
  'use server';
 
 /**
- * @fileOverview An AI agent for extracting structured data from text.
+ * @fileOverview An AI agent for extracting structured data from text, following specific business logic.
  *
  * - extractData - A function that extracts structured data from a text blob.
  * - ExtractDataInput - The input type for the extractData function.
@@ -10,12 +10,17 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { add, format } from 'date-fns';
 
 const DataPointSchema = z.object({
+  siteName: z.string().optional().describe('The name of the site, extracted from the filename (part before the first underscore).'),
+  surveyDate: z.string().optional().describe('The date of the survey in YYYY-MM-DD format, from the timestamp.'),
+  surveyFinishTime: z.string().optional().describe('The finish time of the survey in HH:mm:ss format, calculated by adding the recording length to the timestamp.'),
   timestamp: z.string().describe('The timestamp of the data point (e.g., "2025-03-02 20:50:16+13:00").'),
   latitude: z.number().describe('The latitude of the location.'),
   longitude: z.number().describe('The longitude of the location.'),
   temperature: z.number().describe('The temperature reading.'),
+  length: z.number().optional().describe('The length of the recording in seconds.'),
   flybys: z.number().optional().describe('The number of fly-bys. This field may not be present.'),
   sampleRate: z.number().optional().describe('The sample rate in Hz (e.g., 256000).'),
   minTriggerFreq: z.number().optional().describe('The minimum trigger frequency in Hz.'),
@@ -27,6 +32,7 @@ const DataPointSchema = z.object({
 
 const ExtractDataInputSchema = z.object({
   fileContent: z.string().describe('The text content to extract data from.'),
+  filename: z.string().describe('The original filename of the uploaded file.'),
 });
 export type ExtractDataInput = z.infer<typeof ExtractDataInputSchema>;
 
@@ -36,17 +42,48 @@ const ExtractDataOutputSchema = z.object({
 export type ExtractDataOutput = z.infer<typeof ExtractDataOutputSchema>;
 
 export async function extractData(input: ExtractDataInput): Promise<ExtractDataOutput> {
-  return extractDataFlow(input);
+  const aiResult = await extractDataFlow(input);
+
+  // Post-process to calculate derived fields
+  if (aiResult.data) {
+    aiResult.data = aiResult.data.map(point => {
+        let surveyDate: string | undefined = undefined;
+        let surveyFinishTime: string | undefined = undefined;
+        
+        try {
+          const startDate = new Date(point.timestamp);
+          surveyDate = format(startDate, 'yyyy-MM-dd');
+          
+          if(point.length) {
+            const finishDate = add(startDate, { seconds: point.length });
+            surveyFinishTime = format(finishDate, 'HH:mm:ss');
+          }
+        } catch (e) {
+            console.error("Could not parse date for calculation", e);
+        }
+
+        return {
+            ...point,
+            surveyDate,
+            surveyFinishTime
+        };
+    });
+  }
+
+  return aiResult;
 }
 
 const prompt = ai.definePrompt({
   name: 'extractDataPrompt',
   input: {schema: ExtractDataInputSchema},
   output: {schema: ExtractDataOutputSchema},
-  prompt: `You are an expert at extracting structured data from text. The provided text is metadata from a file, in GUANO format.
+  prompt: `You are an expert at extracting structured data from text based on specific rules. The provided text is metadata from a file, in GUANO format.
 
 Your task is to parse this text and extract the relevant data points into a single data point object.
 
+**Extraction Rules:**
+- **siteName**: Extract the part of the filename *before* the first underscore ('_'). For example, from 'SITE1_2025..._...wav', extract 'SITE1'.
+- **length**: Extract the numeric value from the 'Length' field.
 - The 'Loc Position' field contains both latitude and longitude, separated by a space. You must extract them into the separate 'latitude' and 'longitude' fields.
 - The temperature might be labeled as 'Temperature Int'.
 - The 'Samplerate' field should be extracted as 'sampleRate'.
@@ -54,26 +91,33 @@ Your task is to parse this text and extract the relevant data points into a sing
 - From a key-value pair like 'Model:Song Meter Mini Bat', extract 'Song Meter Mini Bat' for the 'model' field.
 - From a key-value pair like 'Serial:SMU06612', extract 'SMU06612' for the 'serial' field.
 - The 'Audio settings' field is a JSON string. From this, you must extract 'trig min freq' as 'minTriggerFreq' and 'trig max freq' as 'maxTriggerFreq'.
-- If a field like 'flybys' is not present in the text, you should omit it from the output for that data point.
+- If a field is not present in the text, you should omit it from the output for that data point.
 - If no parsable data is found, return an empty array for the 'data' field.
 
-Here is an example of the input format:
+**Example Input Text:**
 "GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song Meter Mini Bat|Serial:SMU06612|WA|Song Meter|Prefix:1|WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]|Length:4.208|Original Filename:1_20250302_205016.wav|Timestamp:2025-03-02 20:50:16+13:00|Loc Position:-37.00403 174.57577|Temperature Int:20.75|Samplerate:256000"
 
-From this example, you must extract:
+**Example Filename:**
+"HADES_20250302_205016.wav"
+
+**From this example, you must extract:**
+- siteName: "HADES"
 - timestamp: "2025-03-02 20:50:16+13:00"
 - latitude: -37.00403
 - longitude: 174.57577
 - temperature: 20.75
+- length: 4.208
 - sampleRate: 256000
 - minTriggerFreq: 30000
 - maxTriggerFreq: 128000
 - make: "Wildlife Acoustics, Inc."
 - model: "Song Meter Mini Bat"
 - serial: "SMU06612"
+- **DO NOT** calculate surveyDate or surveyFinishTime yourself. The system will do this.
 
 Now, please process the following content:
 
+Filename: {{{filename}}}
 Content:
 {{{fileContent}}}
 `,
