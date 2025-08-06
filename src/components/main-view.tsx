@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState, useTransition, useCallback, useEffect } from "react";
-import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
+import { useState, useTransition, useCallback } from "react";
+import type { UploadedFile, FileContent } from "@/lib/types";
 import { getFilesAction, getFileContentAction, deleteFileAction, getExtractedDataAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
 import { FileList } from "./file-list";
@@ -17,11 +17,10 @@ export function MainView({ initialFiles }: MainViewProps) {
   const [files, setFiles] = useState<UploadedFile[]>(initialFiles);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
-  const [extractedData, setExtractedData] = useState<DataPoint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [isLoadingContent, startContentTransition] = useTransition();
-  const [isLoadingData, startDataTransition] = useTransition();
+  const [isDataLoading, startDataTransition] = useTransition();
   const [isRefreshing, startRefreshTransition] = useTransition();
 
   const { toast } = useToast();
@@ -43,7 +42,6 @@ export function MainView({ initialFiles }: MainViewProps) {
 
     setSelectedFileName(name);
     setFileContent(null);
-    setExtractedData(null);
     setError(null);
 
     startContentTransition(async () => {
@@ -55,13 +53,17 @@ export function MainView({ initialFiles }: MainViewProps) {
           title: "Error",
           description: `Could not load content for ${name}.`,
         });
+        setFileContent(null);
         return;
       }
-      setFileContent(contentResult);
       
+      // Set intermediate state without data first
+      setFileContent(contentResult);
+
       startDataTransition(async () => {
         const data = await getExtractedDataAction(contentResult.rawMetadata);
-        setExtractedData(data);
+        // Now update the state with the extracted data
+        setFileContent(current => current ? { ...current, extractedData: data } : null);
       });
     });
   }, [toast, selectedFileName]);
@@ -78,11 +80,6 @@ export function MainView({ initialFiles }: MainViewProps) {
     });
   }, [handleRefresh, handleSelectFile, files.length]);
 
-  useEffect(() => {
-    if (fileContent && extractedData) {
-        setFileContent(current => current ? {...current, extractedData: extractedData} : null);
-    }
-  }, [extractedData, fileContent]);
 
   const handleDeleteFile = useCallback((name: string) => {
      startRefreshTransition(async () => {
@@ -96,7 +93,6 @@ export function MainView({ initialFiles }: MainViewProps) {
                 setSelectedFileName(null);
                 setFileContent(null);
                 setError(null);
-                setExtractedData(null);
             }
             await handleRefresh(true);
         } else {
@@ -133,7 +129,7 @@ export function MainView({ initialFiles }: MainViewProps) {
             <FileDisplay
                 fileContent={fileContent}
                 isLoading={isLoadingContent}
-                isDataLoading={isLoadingData}
+                isDataLoading={isDataLoading}
                 error={error}
             />
         </div>
