@@ -59,7 +59,7 @@ export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, 
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MapPin /> Survey Location &amp; Details</CardTitle>
             <CardDescription>
-                {latestData.siteName ? `Site: ${latestData.siteName}` : 'Location data from file'}
+                Location data from file
             </CardDescription>
           </CardHeader>
           <CardContent>
