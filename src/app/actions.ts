@@ -4,7 +4,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { extractData } from "@/ai/flows/extract-data-flow";
-import { appendToSheetFlow } from "@/ai/flows/append-to-sheet-flow";
+import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
@@ -119,7 +119,7 @@ export async function getExtractedDataAction(
             // After successful extraction, trigger the Google Sheet update for the first data point.
             // This assumes one primary data point per file.
             const dataPoint = aiResult.data[0];
-            await appendToSheetFlow({ dataPoint: dataPoint, originalFilename: filename });
+            await appendToSheet({ dataPoint: dataPoint, originalFilename: filename });
             return aiResult.data;
         }
         return null;

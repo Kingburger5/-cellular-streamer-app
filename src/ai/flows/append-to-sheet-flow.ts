@@ -10,14 +10,20 @@ import { google } from 'googleapis';
 import type { DataPoint } from '@/lib/types';
 
 // Define the schema for the flow's input
-export const AppendToSheetInputSchema = z.object({
+const AppendToSheetInputSchema = z.object({
   dataPoint: z.custom<DataPoint>(),
   originalFilename: z.string(),
 });
 export type AppendToSheetInput = z.infer<typeof AppendToSheetInputSchema>;
 
-// Define the main flow
-export const appendToSheetFlow = ai.defineFlow(
+// This async wrapper is the function that will be called from other server-side code.
+export async function appendToSheet(input: AppendToSheetInput): Promise<string> {
+    return appendToSheetFlow(input);
+}
+
+
+// The Genkit flow is defined here but NOT exported directly.
+const appendToSheetFlow = ai.defineFlow(
   {
     name: 'appendToSheetFlow',
     inputSchema: AppendToSheetInputSchema,
