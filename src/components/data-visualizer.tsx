@@ -7,7 +7,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
-import { FormattedDate } from './formatted-date';
 
 export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, isLoading: boolean }) {
   const apiKey = "AIzaSyCx-5VQB6xHfLbZsxeKDDEr71Vvr2k659A";
@@ -64,7 +63,7 @@ export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, 
             <CardTitle className="flex items-center gap-2"><Satellite /> Location Data</CardTitle>
             {recordingDate && (
                 <CardDescription>
-                    Recorded on <FormattedDate date={recordingDate} />
+                    Recorded on {recordingDate.toLocaleDateString()}
                 </CardDescription>
             )}
           </CardHeader>
