@@ -20,39 +20,58 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffe
 
 export async function POST(request: NextRequest) {
     try {
+        // --- Compatibility Layer for different device headers ---
+        
+        let fileId: string | null = null;
+        let chunkIndexStr: string | null = null;
+        let totalChunksStr: string | null = null;
+        let originalFilename: string | null = null;
+
         const userDataHeader = request.headers.get("x-userdata");
 
-        if (!userDataHeader) {
-            return NextResponse.json({ error: "Missing x-userdata header." }, { status: 400 });
+        if (userDataHeader) {
+            // Standard parsing for browsers or other clients that use the combined header
+            const data: Record<string, string> = {};
+            const pairs = userDataHeader.split(';').map(s => s.trim());
+            for (const pair of pairs) {
+                const parts = pair.split(/:(.*)/s);
+                if (parts.length === 2) {
+                    const key = parts[0].trim().toLowerCase();
+                    const value = parts[1].trim();
+                    data[key] = value;
+                }
+            }
+            fileId = data['x-file-id'];
+            chunkIndexStr = data['x-chunk-index'];
+            totalChunksStr = data['x-total-chunks'];
+            originalFilename = data['x-original-filename'];
+        } else {
+            // Fallback for devices (like the provided Arduino code) sending individual headers
+            chunkIndexStr = request.headers.get("x-chunk-index");
+            totalChunksStr = request.headers.get("x-total-chunks");
+            originalFilename = request.headers.get("x-original-filename");
+            fileId = request.headers.get("x-file-id");
+        }
+
+        // --- End Compatibility Layer ---
+
+        if (!chunkIndexStr || !totalChunksStr ) {
+            return NextResponse.json({ error: "Missing one or more required chunking headers (x-chunk-index, x-total-chunks)." }, { status: 400 });
         }
         
-        // This is a simple, robust parser for the specific format sent by the device.
-        const data: Record<string, string> = {};
-        const pairs = userDataHeader.split(';').map(s => s.trim());
-        for (const pair of pairs) {
-            const parts = pair.split(/:(.*)/s);
-            if (parts.length === 2) {
-                // Lowercase the key to handle case-insensitivity (e.g., X-File-ID vs x-file-id)
-                const key = parts[0].trim().toLowerCase();
-                const value = parts[1].trim();
-                data[key] = value;
-            }
+        // If fileId or originalFilename are missing, create placeholders.
+        // This ensures compatibility with the user's Arduino code.
+        if (!fileId) {
+            fileId = `device-upload-${Date.now()}`;
         }
-
-        const fileId = data['x-file-id'];
-        const chunkIndexStr = data['x-chunk-index'];
-        const totalChunksStr = data['x-total-chunks'];
-        const originalFilename = data['x-original-filename'];
-
-        if (!fileId || !chunkIndexStr || !totalChunksStr || !originalFilename) {
-            return NextResponse.json({ error: "Missing one or more required fields in x-userdata header." }, { status: 400 });
+        if (!originalFilename) {
+            originalFilename = `${fileId}.dat`;
         }
         
         if (!request.body) {
             return NextResponse.json({ error: "Empty request body." }, { status: 400 });
         }
 
-        // Use the robust stream-to-buffer method to handle binary data correctly.
         const chunkBuffer = await streamToBuffer(request.body);
 
         if (!chunkBuffer || chunkBuffer.byteLength === 0) {
@@ -62,11 +81,9 @@ export async function POST(request: NextRequest) {
         const chunkIndex = parseInt(chunkIndexStr, 10);
         const totalChunks = parseInt(totalChunksStr, 10);
         
-        // Use the OS's temporary directory, which is guaranteed to be writable.
         const TMP_DIR = path.join(os.tmpdir(), "cellular-uploads");
         await fs.mkdir(TMP_DIR, { recursive: true });
 
-        // Sanitize the fileId to ensure it's a valid directory name.
         const safeFileId = fileId.replace(/[^a-zA-Z0-9-._]/g, '_');
         const chunkDir = path.join(TMP_DIR, safeFileId);
         await fs.mkdir(chunkDir, { recursive: true });
@@ -78,15 +95,22 @@ export async function POST(request: NextRequest) {
             const finalUploadDir = path.join(process.cwd(), "uploads");
             await fs.mkdir(finalUploadDir, { recursive: true });
             
-            // Sanitize final filename to prevent path traversal attacks
             const safeOriginalFilename = path.basename(originalFilename).replace(/[^a-zA-Z0-9-._]/g, '_');
             const finalFilePath = path.join(finalUploadDir, safeOriginalFilename);
             
             const fileHandle = await fs.open(finalFilePath, 'w');
             for (let i = 0; i < totalChunks; i++) {
                 const tempChunkPath = path.join(chunkDir, `${i}.chunk`);
-                const chunkData = await fs.readFile(tempChunkPath);
-                await fileHandle.write(chunkData);
+                try {
+                    const chunkData = await fs.readFile(tempChunkPath);
+                    await fileHandle.write(chunkData);
+                } catch (e) {
+                     // A chunk is missing, abort assembly
+                     await fileHandle.close();
+                     await fs.unlink(finalFilePath); // Delete the incomplete file
+                     await fs.rm(chunkDir, { recursive: true, force: true });
+                     return NextResponse.json({ error: `Failed to assemble file, missing chunk ${i}.` }, { status: 500 });
+                }
             }
             await fileHandle.close();
             
@@ -98,7 +122,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 200 });
 
     } catch (error: any) {
-        console.error("[SERVER] Unhandled error in upload handler:", error.stack);
+        console.error("[SERVER] Unhandled error in upload handler:", error);
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
         return NextResponse.json(
             { error: "Internal Server Error", details: errorMessage },
