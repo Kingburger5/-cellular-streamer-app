@@ -5,8 +5,7 @@ import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Satellite, Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock } from 'lucide-react';
-import { formatBytes } from '@/lib/utils';
+import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock } from 'lucide-react';
 
 export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, isLoading: boolean }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
