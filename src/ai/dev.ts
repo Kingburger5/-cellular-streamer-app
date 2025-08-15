@@ -1,5 +1,2 @@
-import { config } from 'dotenv';
-config();
-
-// Intentionally left blank to prevent AI flows from loading and crashing the server
-// due to missing API keys. The cellular upload endpoint does not use these flows.
+// This file is intentionally left blank to prevent the Genkit dev server
+// from conflicting with the Next.js dev server.
