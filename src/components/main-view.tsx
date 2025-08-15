@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useEffect } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
 import { getFilesAction, getFileContentAction, deleteFileAction, getExtractedDataAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
@@ -27,15 +27,31 @@ export function MainView({ initialFiles }: MainViewProps) {
 
   const handleRefresh = useCallback(async (isAutoRefresh = false) => {
       const refreshedFiles = await getFilesAction();
-      setFiles(refreshedFiles);
-      if (!isAutoRefresh) {
-        toast({
-          title: "File list updated",
-          description: `Found ${refreshedFiles.length} files.`,
-        });
-      }
+      setFiles((currentFiles) => {
+          // Only update state if the file list has actually changed to avoid re-renders
+          if (JSON.stringify(currentFiles) !== JSON.stringify(refreshedFiles)) {
+              if (!isAutoRefresh) {
+                toast({
+                  title: "File list updated",
+                  description: `Found ${refreshedFiles.length} files.`,
+                });
+              }
+              return refreshedFiles;
+          }
+          return currentFiles;
+      });
       return refreshedFiles;
   }, [toast]);
+
+  // Auto-refresh files every 5 seconds to catch device uploads
+  useEffect(() => {
+    const interval = setInterval(() => {
+        handleRefresh(true);
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval); // Cleanup on component unmount
+  }, [handleRefresh]);
+
 
   const handleSelectFile = useCallback((name: string) => {
     if (name === selectedFileName) return;
