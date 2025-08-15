@@ -3,11 +3,14 @@
 
 import { useState, useTransition, useCallback, useEffect } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
-import { getFilesAction, getFileContentAction, deleteFileAction, getExtractedDataAction } from "@/app/actions";
+import { getFilesAction, getFileContentAction, deleteFileAction, getExtractedDataAction, getLogsAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
 import { FileList } from "./file-list";
 import { FileDisplay } from "./file-display";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DebugLogViewer } from "./debug-log-viewer";
+
 
 interface MainViewProps {
   initialFiles: UploadedFile[];
@@ -141,14 +144,23 @@ export function MainView({ initialFiles }: MainViewProps) {
         />
       </Sidebar>
       <SidebarInset className="p-0 h-screen overflow-hidden">
-        <div className="h-full w-full p-4">
-            <FileDisplay
-                fileContent={fileContent}
-                isLoading={isLoadingContent}
-                isDataLoading={isDataLoading}
-                error={error}
-            />
-        </div>
+        <Tabs defaultValue="files" className="h-full w-full flex flex-col p-4">
+            <TabsList className="shrink-0 w-min self-center">
+                <TabsTrigger value="files">File Viewer</TabsTrigger>
+                <TabsTrigger value="logs">Connection Logs</TabsTrigger>
+            </TabsList>
+            <TabsContent value="files" className="flex-grow h-0 mt-4">
+                <FileDisplay
+                    fileContent={fileContent}
+                    isLoading={isLoadingContent}
+                    isDataLoading={isDataLoading}
+                    error={error}
+                />
+            </TabsContent>
+            <TabsContent value="logs" className="flex-grow h-0 mt-4">
+                <DebugLogViewer />
+            </TabsContent>
+        </Tabs>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -8,6 +8,7 @@ import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+const LOG_FILE = path.join(UPLOAD_DIR, "connections.log");
 
 // Helper to ensure upload directory exists
 async function ensureUploadDirExists() {
@@ -24,7 +25,11 @@ async function ensureUploadDirExists() {
 export async function getFilesAction(): Promise<UploadedFile[]> {
   try {
     await ensureUploadDirExists();
-    const filenames = await fs.readdir(UPLOAD_DIR);
+    const allDirents = await fs.readdir(UPLOAD_DIR, { withFileTypes: true });
+    const filenames = allDirents
+      .filter(dirent => dirent.isFile() && dirent.name !== 'connections.log')
+      .map(dirent => dirent.name);
+      
     const filesWithStats = await Promise.all(
       filenames.map(async (name) => {
         const filePath = path.join(UPLOAD_DIR, name);
@@ -147,4 +152,18 @@ export async function deleteFileAction(
     }
     return { error: "Failed to delete file." };
   }
+}
+
+export async function getLogsAction(): Promise<string> {
+    try {
+        await ensureUploadDirExists();
+        const logContent = await fs.readFile(LOG_FILE, 'utf-8');
+        return logContent;
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            return "Log file does not exist yet. Send a request to create it.";
+        }
+        console.error("Error reading log file:", error);
+        return "Error reading log file.";
+    }
 }

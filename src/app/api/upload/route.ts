@@ -2,22 +2,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import { format } from 'date-fns';
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+const LOG_FILE = path.join(UPLOAD_DIR, "connections.log");
 
-// Helper function to read a ReadableStream into a Buffer.
-async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        chunks.push(value);
+// Helper to ensure upload directory exists
+async function ensureUploadDirExists() {
+  try {
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  } catch (error: any) {
+    if (error.code !== 'EEXIST') {
+      console.error("Error creating upload directory:", error);
+      throw error; // rethrow
     }
-    return Buffer.concat(chunks);
+  }
 }
+
+// Helper to log requests to a file
+async function logRequest(request: NextRequest) {
+    await ensureUploadDirExists();
+    const timestamp = format(new Date(), "yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
+    let logEntry = `[${timestamp}] --- New Request ---\n`;
+    
+    // Get IP address, being mindful of proxy headers
+    let ip = request.ip ?? request.headers.get('x-forwarded-for') ?? 'N/A';
+    logEntry += `IP Address: ${ip}\n`;
+    
+    // Log all headers
+    logEntry += "Headers:\n";
+    request.headers.forEach((value, key) => {
+        logEntry += `  ${key}: ${value}\n`;
+    });
+    logEntry += "---------------------------\n\n";
+
+    try {
+        await fs.appendFile(LOG_FILE, logEntry);
+    } catch (logError) {
+        console.error("Failed to write to log file:", logError);
+    }
+}
+
 
 /**
  * Handles file uploads from devices using simple POST requests,
@@ -27,16 +52,21 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffe
  * request as a complete file.
  */
 export async function POST(request: NextRequest) {
+    
+    await logRequest(request);
+
     try {
-        await fs.mkdir(UPLOAD_DIR, { recursive: true });
+        await ensureUploadDirExists();
 
         if (!request.body) {
             return NextResponse.json({ error: "Empty request body." }, { status: 400 });
         }
         
-        const fileBuffer = await streamToBuffer(request.body);
+        const fileBuffer = await request.arrayBuffer();
+        const buffer = Buffer.from(fileBuffer);
 
-        if (fileBuffer.length === 0) {
+
+        if (buffer.length === 0) {
              return NextResponse.json({ error: "Empty file uploaded." }, { status: 400 });
         }
         
@@ -47,7 +77,7 @@ export async function POST(request: NextRequest) {
         const originalFilename = `upload-${Date.now()}.wav`;
         const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
 
-        await fs.writeFile(finalFilePath, fileBuffer);
+        await fs.writeFile(finalFilePath, buffer);
 
         console.log(`[SERVER] Successfully received and saved file as ${originalFilename}`);
         
