@@ -1,89 +1,93 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
 import { format } from 'date-fns';
+import { google } from 'googleapis';
 
-const UPLOAD_DIR = path.join(process.cwd(), "uploads");
-const LOG_FILE = path.join(UPLOAD_DIR, "connections.log");
-
-// Helper to ensure upload directory exists
-async function ensureUploadDirExists() {
-  try {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  } catch (error: any) {
-    if (error.code !== 'EEXIST') {
-      console.error("Error creating upload directory:", error);
-      throw error; // rethrow
+async function logRequestToSheet(request: NextRequest) {
+    const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+    const LOG_SHEET_NAME = "ConnectionLog"; // Log to a separate sheet
+    const GOOGLE_SERVICE_ACCOUNT_CREDENTIALS = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
+     
+    if (!SPREADSHEET_ID || !GOOGLE_SERVICE_ACCOUNT_CREDENTIALS) {
+      console.log("Google Sheets env vars for logging not set. Skipping.");
+      return;
     }
-  }
-}
-
-// Helper to log requests to a file
-async function logRequest(request: NextRequest) {
-    await ensureUploadDirExists();
-    const timestamp = format(new Date(), "yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
-    let logEntry = `[${timestamp}] --- New Request ---\n`;
-    
-    // Get IP address, being mindful of proxy headers
-    let ip = request.ip ?? request.headers.get('x-forwarded-for') ?? 'N/A';
-    logEntry += `IP Address: ${ip}\n`;
-    
-    // Log all headers
-    logEntry += "Headers:\n";
-    request.headers.forEach((value, key) => {
-        logEntry += `  ${key}: ${value}\n`;
-    });
-    logEntry += "---------------------------\n\n";
 
     try {
-        await fs.appendFile(LOG_FILE, logEntry);
-    } catch (logError) {
-        console.error("Failed to write to log file:", logError);
+        const credentials = JSON.parse(GOOGLE_SERVICE_ACCOUNT_CREDENTIALS);
+        const auth = new google.auth.GoogleAuth({
+            credentials,
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        const timestamp = format(new Date(), "yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
+        const ip = request.ip ?? request.headers.get('x-forwarded-for') ?? 'N/A';
+        const userAgent = request.headers.get('user-agent') || 'N/A';
+        const contentType = request.headers.get('content-type') || 'N/A';
+        
+        const headers: string[] = [];
+        request.headers.forEach((value, key) => {
+            if (key.toLowerCase().startsWith('x-')) { // Log custom headers
+                headers.push(`${key}: ${value}`);
+            }
+        });
+
+        const newRow = [
+            timestamp,
+            ip,
+            userAgent,
+            contentType,
+            headers.join('\n')
+        ];
+        
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID,
+            range: `${LOG_SHEET_NAME}!A1`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+                values: [newRow],
+            },
+        });
+
+    } catch (error) {
+        console.error("Failed to write request log to Google Sheet:", error);
     }
 }
 
 
 /**
- * Handles file uploads from devices using simple POST requests,
- * such as the SIM7600's AT+HTTPPOSTFILE command.
- *
- * This handler is not designed for chunked uploads. It treats each POST
- * request as a complete file.
+ * Handles file uploads. It does not save the file to disk.
+ * Instead, it processes the file in memory.
  */
 export async function POST(request: NextRequest) {
     
-    await logRequest(request);
+    // Log the request details to a Google Sheet instead of a local file
+    await logRequestToSheet(request);
 
     try {
-        await ensureUploadDirExists();
-
         if (!request.body) {
             return NextResponse.json({ error: "Empty request body." }, { status: 400 });
         }
         
         const fileBuffer = await request.arrayBuffer();
-        const buffer = Buffer.from(fileBuffer);
 
-
-        if (buffer.length === 0) {
-             return NextResponse.json({ error: "Empty file uploaded." }, { status: 400 });
+        if (fileBuffer.byteLength === 0) {
+             return NextResponse.json({ error: "Empty file content." }, { status: 400 });
         }
         
-        // Since HTTPPOSTFILE doesn't send a filename header, we generate one.
-        // We will try to guess the extension, but default to .dat
-        // A more robust implementation might inspect magic bytes.
-        // For this use case, we assume .wav is the most likely.
-        const originalFilename = `upload-${Date.now()}.wav`;
-        const finalFilePath = path.join(UPLOAD_DIR, originalFilename);
+        // Since we are not saving, we just confirm receipt.
+        // The actual processing will now be initiated by the client after upload.
+        const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
 
-        await fs.writeFile(finalFilePath, buffer);
-
-        console.log(`[SERVER] Successfully received and saved file as ${originalFilename}`);
+        console.log(`[SERVER] Successfully received file in memory: ${filename}`);
         
+        // We can return the buffer to the client if it needs to process it,
+        // but for now, just confirming success is enough. The client-side uploader
+        // will trigger the processing action.
         return NextResponse.json({
-            message: "File uploaded successfully.",
-            filename: originalFilename
+            message: "File uploaded successfully and is ready for processing.",
+            filename: filename,
         }, { status: 200 });
 
     } catch (error: any) {

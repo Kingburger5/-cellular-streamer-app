@@ -14,7 +14,7 @@ import {
   SidebarFooter
 } from "@/components/ui/sidebar";
 import { Button } from "./ui/button";
-import { RefreshCw, Antenna, Trash2 } from "lucide-react";
+import { Antenna, Trash2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { FileUploader } from "./file-uploader";
 import {
@@ -34,13 +34,12 @@ interface FileListProps {
   files: UploadedFile[];
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
-  onRefresh: () => void;
-  isRefreshing: boolean;
-  onUploadComplete: () => void;
+  onUploadStart: () => void;
+  onUploadComplete: (file: any) => void; // A bit generic, but needed for the processed file
   onDeleteFile: (name: string) => void;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefreshing, onUploadComplete, onDeleteFile }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onUploadStart, onUploadComplete, onDeleteFile }: FileListProps) {
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
@@ -59,12 +58,6 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <div className="p-2">
-            <Button variant="outline" size="sm" className="w-full" onClick={onRefresh} disabled={isRefreshing}>
-                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Refresh Files
-            </Button>
-        </div>
         <SidebarMenu className="flex-grow">
           {files.map((file) => (
             <SidebarMenuItem key={file.name}>
@@ -75,7 +68,7 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
               >
                 <div className="flex items-center gap-2 w-full">
                   <FileIcon filename={file.name} className="w-4 h-4 shrink-0" />
-                  <span className="truncate flex-1 text-left">{file.name.substring(file.name.indexOf('-') + 1)}</span>
+                  <span className="truncate flex-1 text-left">{file.name}</span>
                 </div>
                 <div className="text-xs text-muted-foreground w-full mt-1 flex justify-between">
                     <span>{file.uploadDate.toLocaleDateString()}</span>
@@ -94,7 +87,7 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                         <AlertDialogDescription>
                             This action cannot be undone. This will permanently delete the file
-                            <strong className="mx-1">{file.name.substring(file.name.indexOf('-') + 1)}</strong>
+                            <strong className="mx-1">{file.name}</strong>
                              and remove its data from our servers.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -111,13 +104,13 @@ export function FileList({ files, selectedFile, onSelectFile, onRefresh, isRefre
           ))}
           {files.length === 0 && (
             <div className="text-center text-muted-foreground p-4">
-                No files uploaded yet.
+                No files uploaded yet. Upload a file to begin.
             </div>
           )}
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>
-        <FileUploader onUploadComplete={onUploadComplete} />
+        <FileUploader onUploadStart={onUploadStart} onUploadComplete={onUploadComplete} />
       </SidebarFooter>
     </>
   );

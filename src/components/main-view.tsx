@@ -3,164 +3,92 @@
 
 import { useState, useTransition, useCallback, useEffect } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
-import { getFilesAction, getFileContentAction, deleteFileAction, getExtractedDataAction, getLogsAction } from "@/app/actions";
+import { deleteFileAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
 import { FileList } from "./file-list";
 import { FileDisplay } from "./file-display";
 import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DebugLogViewer } from "./debug-log-viewer";
-
 
 interface MainViewProps {
-  initialFiles: UploadedFile[];
+  initialFiles: UploadedFile[]; // This will be empty now but kept for structure
 }
 
 export function MainView({ initialFiles }: MainViewProps) {
-  const [files, setFiles] = useState<UploadedFile[]>(initialFiles);
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<FileContent | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Instead of a list of filenames, we now store the full FileContent object of processed files.
+  const [processedFiles, setProcessedFiles] = useState<FileContent[]>([]);
+  const [selectedFile, setSelectedFile] = useState<FileContent | null>(null);
 
-  const [isLoadingContent, startContentTransition] = useTransition();
-  const [isDataLoading, startDataTransition] = useTransition();
-  const [isRefreshing, startRefreshTransition] = useTransition();
+  const [isLoading, startTransition] = useTransition();
 
   const { toast } = useToast();
 
-  const handleRefresh = useCallback(async (isAutoRefresh = false) => {
-      const refreshedFiles = await getFilesAction();
-      setFiles((currentFiles) => {
-          // Only update state if the file list has actually changed to avoid re-renders
-          if (JSON.stringify(currentFiles) !== JSON.stringify(refreshedFiles)) {
-              if (!isAutoRefresh) {
-                toast({
-                  title: "File list updated",
-                  description: `Found ${refreshedFiles.length} files.`,
-                });
-              }
-              return refreshedFiles;
-          }
-          return currentFiles;
-      });
-      return refreshedFiles;
-  }, [toast]);
-
-  // Auto-refresh files every 5 seconds to catch device uploads
-  useEffect(() => {
-    const interval = setInterval(() => {
-        handleRefresh(true);
-    }, 5000); // Poll every 5 seconds
-
-    return () => clearInterval(interval); // Cleanup on component unmount
-  }, [handleRefresh]);
-
-
   const handleSelectFile = useCallback((name: string) => {
-    if (name === selectedFileName) return;
+    const file = processedFiles.find(f => f.name === name);
+    if (file) {
+      setSelectedFile(file);
+    }
+  }, [processedFiles]);
 
-    setSelectedFileName(name);
-    setFileContent(null);
-    setError(null);
 
-    startContentTransition(async () => {
-      const contentResult = await getFileContentAction(name);
-      if (!contentResult) {
-        setError(`Failed to load content for ${name}.`);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: `Could not load content for ${name}.`,
-        });
-        setFileContent(null);
-        return;
-      }
-      
-      // Set intermediate state without data first
-      setFileContent(contentResult);
-
-      startDataTransition(async () => {
-        const data = await getExtractedDataAction(contentResult.rawMetadata, contentResult.name);
-        // Now update the state with the extracted data
-        setFileContent(current => current ? { ...current, extractedData: data } : null);
-      });
+  const handleUploadStart = () => {
+    startTransition(() => {
+        // Clear the current view to show a loading state
+        setSelectedFile(null);
     });
-  }, [toast, selectedFileName]);
+  }
 
-  const handleUploadComplete = useCallback(async () => {
-    startRefreshTransition(async () => {
-        const refreshedFiles = await handleRefresh(true);
-        if (refreshedFiles.length > 0 && refreshedFiles.length > files.length) {
-            const newFile = refreshedFiles[0]; // Just select the newest file
-            if (newFile) {
-                handleSelectFile(newFile.name);
-            }
-        }
+  const handleUploadComplete = useCallback((newFile: FileContent) => {
+    startTransition(() => {
+        // Add new file to the beginning of the list and select it
+        setProcessedFiles(currentFiles => [newFile, ...currentFiles]);
+        setSelectedFile(newFile);
     });
-  }, [handleRefresh, handleSelectFile, files.length]);
+  }, []);
 
 
   const handleDeleteFile = useCallback((name: string) => {
-     startRefreshTransition(async () => {
-        const result = await deleteFileAction(name);
-        if (result.success) {
-            toast({
-                title: "File Deleted",
-                description: `Successfully deleted ${name.substring(name.indexOf('-') + 1)}.`,
-            });
-            if (selectedFileName === name) {
-                setSelectedFileName(null);
-                setFileContent(null);
-                setError(null);
-            }
-            await handleRefresh(true);
-        } else {
-            toast({
-                variant: "destructive",
-                title: "Delete Failed",
-                description: result.error,
-            });
+     startTransition(async () => {
+        setProcessedFiles(currentFiles => currentFiles.filter(f => f.name !== name));
+        if (selectedFile?.name === name) {
+            setSelectedFile(null);
         }
+        // We call the action on the backend even though it does nothing,
+        // in case we want to add server-side cleanup later (e.g. from a database).
+        await deleteFileAction(name); 
+        toast({
+            title: "File Removed",
+            description: `Removed ${name} from the list.`,
+        });
      });
-  }, [toast, handleRefresh, selectedFileName]);
-
-  const onRefresh = useCallback(() => {
-    startRefreshTransition(async () => {
-        await handleRefresh(false);
-    });
-  }, [handleRefresh]);
+  }, [toast, selectedFile]);
+  
+  // Map FileContent to the UploadedFile format expected by FileList
+  const fileListItems: UploadedFile[] = processedFiles.map(f => ({
+      name: f.name,
+      // Approximate size, as we don't have the raw file buffer here anymore
+      size: f.content.length, 
+      uploadDate: new Date(), // Use current date as we don't store this persistently
+  }));
 
   return (
     <SidebarProvider>
       <Sidebar className="flex flex-col">
         <FileList
-          files={files}
-          selectedFile={selectedFileName}
+          files={fileListItems}
+          selectedFile={selectedFile?.name || null}
           onSelectFile={handleSelectFile}
-          onRefresh={onRefresh}
-          isRefreshing={isRefreshing}
+          onUploadStart={handleUploadStart}
           onUploadComplete={handleUploadComplete}
           onDeleteFile={handleDeleteFile}
         />
       </Sidebar>
-      <SidebarInset className="p-0 h-screen overflow-hidden">
-        <Tabs defaultValue="files" className="h-full w-full flex flex-col p-4">
-            <TabsList className="shrink-0 w-min self-center">
-                <TabsTrigger value="files">File Viewer</TabsTrigger>
-                <TabsTrigger value="logs">Connection Logs</TabsTrigger>
-            </TabsList>
-            <TabsContent value="files" className="flex-grow h-0 mt-4">
-                <FileDisplay
-                    fileContent={fileContent}
-                    isLoading={isLoadingContent}
-                    isDataLoading={isDataLoading}
-                    error={error}
-                />
-            </TabsContent>
-            <TabsContent value="logs" className="flex-grow h-0 mt-4">
-                <DebugLogViewer />
-            </TabsContent>
-        </Tabs>
+      <SidebarInset className="p-4 h-screen overflow-hidden">
+        <FileDisplay
+            fileContent={selectedFile}
+            isLoading={isLoading}
+            isDataLoading={false} // Data is loaded as part of the single processing step
+            error={null} // Error handling is now part of the upload process
+        />
       </SidebarInset>
     </SidebarProvider>
   );

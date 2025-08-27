@@ -7,14 +7,14 @@ import { Progress } from "./ui/progress";
 import { UploadCloud, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatBytes } from "@/lib/utils";
-
-const CHUNK_SIZE = 1024 * 512; // 512KB
+import { processUploadedFileAction } from "@/app/actions";
 
 interface FileUploaderProps {
-    onUploadComplete: () => void;
+    onUploadStart: () => void;
+    onUploadComplete: (processedFile: any) => void;
 }
 
-export function FileUploader({ onUploadComplete }: FileUploaderProps) {
+export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -37,59 +37,42 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
     }
   };
 
-  const uploadFileInChunks = useCallback(async () => {
+  const handleUpload = useCallback(async () => {
     if (!file) return;
 
     setIsUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(0); // For visual feedback, though it will be quick
+    onUploadStart();
 
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    // Create a unique but simple identifier for the file.
-    const fileIdentifier = `${file.name.replace(/[^a-zA-Z0-9-._]/g, '_')}-${file.size}-${file.lastModified}`;
-    
     try {
-        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-            const start = chunkIndex * CHUNK_SIZE;
-            const end = Math.min(start + CHUNK_SIZE, file.size);
-            const chunk = file.slice(start, end);
-            
-            const response = await fetch('/api/upload', {
-                method: "POST",
-                headers: {
-                    // Match the lowercase keys expected by the server.
-                    "x-userdata": `x-file-id: ${fileIdentifier}; x-chunk-index: ${chunkIndex}; x-total-chunks: ${totalChunks}; x-original-filename: ${file.name}`,
-                    "Content-Type": "application/octet-stream",
-                },
-                body: chunk,
-            });
+        const fileBuffer = await file.arrayBuffer();
+        setUploadProgress(50); // Mark progress
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || "Chunk upload failed");
-            }
+        const processedFile = await processUploadedFileAction(fileBuffer, file.name);
 
-            setUploadProgress(((chunkIndex + 1) / totalChunks) * 100);
-        }
-        
-        setTimeout(() => {
+        setUploadProgress(100);
+
+        if (processedFile) {
             toast({
-                title: "Upload Successful",
-                description: "Your file has been processed and is now available.",
+                title: "Processing Complete",
+                description: "Your file has been analyzed and the data is now visible.",
             });
-            onUploadComplete();
-            resetState();
-        }, 1000);
+            onUploadComplete(processedFile);
+        } else {
+            throw new Error("The server could not process the file.");
+        }
 
     } catch (error) {
-        console.error("Upload failed:", error);
+        console.error("Upload & processing failed:", error);
         toast({
             variant: "destructive",
-            title: "Upload Failed",
+            title: "Processing Failed",
             description: error instanceof Error ? error.message : "An unknown error occurred.",
         });
-        resetState();
+    } finally {
+       resetState();
     }
-  }, [file, onUploadComplete, resetState, toast]);
+  }, [file, onUploadStart, onUploadComplete, resetState, toast]);
 
   const handleButtonClick = () => {
     if (fileInputRef.current) {
@@ -115,7 +98,7 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
             disabled={isUploading}
         >
             <UploadCloud className="mr-2" />
-            Upload a File
+            Upload & Process File
         </Button>
       )}
 
@@ -127,15 +110,15 @@ export function FileUploader({ onUploadComplete }: FileUploaderProps) {
                     <X className="h-4 w-4" />
                 </Button>
             </div>
-            <Button className="w-full" onClick={uploadFileInChunks}>
-                Start Upload
+            <Button className="w-full" onClick={handleUpload}>
+                Start Processing
             </Button>
         </div>
       )}
 
       {isUploading && (
         <div className="space-y-2 text-center">
-            <p className="text-sm text-muted-foreground">Uploading {file?.name}...</p>
+            <p className="text-sm text-muted-foreground">Processing {file?.name}...</p>
             <Progress value={uploadProgress} />
             <p className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</p>
         </div>

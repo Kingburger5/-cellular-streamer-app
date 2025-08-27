@@ -1,8 +1,9 @@
-import { getFilesAction } from "@/app/actions";
+
 import { MainView } from "@/components/main-view";
 
 export default async function Home() {
-  const initialFiles = await getFilesAction();
-
-  return <MainView initialFiles={initialFiles} />;
+  // Since we no longer read from the file system on the server,
+  // we pass an empty array for initial files.
+  // The UI is now fully client-driven based on user uploads.
+  return <MainView initialFiles={[]} />;
 }

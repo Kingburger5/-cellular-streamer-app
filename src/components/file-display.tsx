@@ -3,7 +3,6 @@
 
 import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { FileContentViewer } from "./file-content-viewer";
 import { Badge } from "./ui/badge";
 import { ServerCrash, FileSearch, Loader } from "lucide-react";
@@ -20,8 +19,8 @@ export function FileDisplay({ fileContent, isLoading, isDataLoading, error }: Fi
     return (
       <Card className="h-full flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
         <Loader className="w-12 h-12 mb-4 animate-spin" />
-        <h3 className="font-semibold">Loading File...</h3>
-        <p className="text-sm">Please wait while the file content is being loaded.</p>
+        <h3 className="font-semibold">Processing File...</h3>
+        <p className="text-sm">Please wait while the file is being uploaded and analyzed.</p>
       </Card>
     );
   }
@@ -30,7 +29,7 @@ export function FileDisplay({ fileContent, isLoading, isDataLoading, error }: Fi
      return (
       <Card className="h-full flex flex-col items-center justify-center p-4 text-center">
         <ServerCrash className="w-16 h-16 text-destructive mb-4" />
-        <h2 className="text-2xl font-headline font-semibold mb-2">Error Loading File</h2>
+        <h2 className="text-2xl font-headline font-semibold mb-2">Error Processing File</h2>
         <p className="text-muted-foreground">{error}</p>
       </Card>
     );
@@ -40,8 +39,8 @@ export function FileDisplay({ fileContent, isLoading, isDataLoading, error }: Fi
     return (
       <Card className="h-full flex flex-col items-center justify-center p-4 text-center">
         <FileSearch className="w-16 h-16 text-muted-foreground mb-4" />
-        <h2 className="text-2xl font-headline font-semibold mb-2">Select a file</h2>
-        <p className="text-muted-foreground">Choose a file from the list to view its contents.</p>
+        <h2 className="text-2xl font-headline font-semibold mb-2">No file selected</h2>
+        <p className="text-muted-foreground">Upload a file to view its contents and analysis.</p>
       </Card>
     );
   }
