@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { UploadedFile, FileContent } from "@/lib/types";
+import type { UploadedFile } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
 import {
   SidebarHeader,
@@ -13,7 +13,6 @@ import {
   SidebarContent,
   SidebarFooter
 } from "@/components/ui/sidebar";
-import { Button } from "./ui/button";
 import { Antenna, Trash2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { FileUploader } from "./file-uploader";
@@ -34,12 +33,11 @@ interface FileListProps {
   files: UploadedFile[];
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
-  onUploadStart: () => void;
-  onUploadComplete: (file: FileContent | null, error?: string) => void;
+  onUploadComplete: () => void;
   onDeleteFile: (name: string) => void;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onUploadStart, onUploadComplete, onDeleteFile }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, onDeleteFile }: FileListProps) {
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
@@ -86,9 +84,9 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadStart, onU
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This action cannot be undone. This will remove the file
+                            This action cannot be undone. This will permanently delete the file
                             <strong className="mx-1">{file.name}</strong>
-                             from the session.
+                             from Firebase Storage.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -104,13 +102,13 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadStart, onU
           ))}
           {files.length === 0 && (
             <div className="text-center text-muted-foreground p-4">
-                No files uploaded yet. Upload a file to begin.
+                No files in storage. Upload a file to begin.
             </div>
           )}
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>
-        <FileUploader onUploadStart={onUploadStart} onUploadComplete={onUploadComplete} />
+        <FileUploader onUploadComplete={onUploadComplete} />
       </SidebarFooter>
     </>
   );

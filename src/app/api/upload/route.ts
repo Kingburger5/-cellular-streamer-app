@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { google } from 'googleapis';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes } from "firebase/storage";
 
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -57,12 +59,11 @@ async function logRequestToSheet(request: NextRequest) {
 
 
 /**
- * Handles file uploads. It does not save the file to disk.
- * Instead, it processes the file in memory.
+ * Handles file uploads from transmission modules.
+ * It saves the file to Firebase Storage.
  */
 export async function POST(request: NextRequest) {
     
-    // Log the request details to a Google Sheet instead of a local file
     await logRequestToSheet(request);
 
     try {
@@ -76,17 +77,18 @@ export async function POST(request: NextRequest) {
              return NextResponse.json({ error: "Empty file content." }, { status: 400 });
         }
         
-        // Since we are not saving, we just confirm receipt.
-        // The actual processing will now be initiated by the client after upload.
         const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
+        const storageRef = ref(storage, `uploads/${filename}`);
 
-        console.log(`[SERVER] Successfully received file in memory: ${filename}`);
+        // Upload the file to Firebase Storage
+        await uploadBytes(storageRef, fileBuffer, {
+            contentType: request.headers.get('content-type') || 'application/octet-stream',
+        });
         
-        // We can return the buffer to the client if it needs to process it,
-        // but for now, just confirming success is enough. The client-side uploader
-        // will trigger the processing action.
+        console.log(`[SERVER] Successfully uploaded to Firebase Storage: ${filename}`);
+        
         return NextResponse.json({
-            message: "File uploaded successfully and is ready for processing.",
+            message: "File uploaded successfully to Firebase Storage.",
             filename: filename,
         }, { status: 200 });
 

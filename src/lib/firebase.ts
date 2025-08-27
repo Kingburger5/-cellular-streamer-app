@@ -1,16 +1,20 @@
-import { initializeApp, getApps } from "firebase/app";
 
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getStorage } from "firebase/storage";
+
+// This configuration is automatically provided by the App Hosting environment.
+// It is safe to be publicly exposed.
 const firebaseConfig = {
-  projectId: "cellular-data-streamer",
-  appId: "1:945649809294:web:00c9ea813d2fc49d6d16df",
-  storageBucket: "cellular-data-streamer.firebasestorage.app",
-  apiKey: "AIzaSyDWxIExVVeOR4eMaG8rYvb_svCquk8vWSg",
-  authDomain: "cellular-data-streamer.firebaseapp.com",
-  measurementId: "",
-  messagingSenderId: "945649809294",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
 };
 
 // Initialize Firebase
-let firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const storage = getStorage(app);
 
-export default firebaseApp;
+export { app, storage };

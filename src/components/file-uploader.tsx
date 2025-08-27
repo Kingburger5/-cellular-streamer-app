@@ -7,16 +7,12 @@ import { Progress } from "./ui/progress";
 import { UploadCloud, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatBytes } from "@/lib/utils";
-import { processUploadedFileAction } from "@/app/actions";
-import type { FileContent } from "@/lib/types";
-
 
 interface FileUploaderProps {
-    onUploadStart: () => void;
-    onUploadComplete: (processedFile: FileContent | null, error?: string) => void;
+    onUploadComplete: () => void;
 }
 
-export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderProps) {
+export function FileUploader({ onUploadComplete }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,39 +40,55 @@ export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderPr
 
     setIsUploading(true);
     setUploadProgress(0);
-    onUploadStart();
 
-    try {
-        const fileBuffer = await file.arrayBuffer();
-        setUploadProgress(50);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload", true);
 
-        const processedFile = await processUploadedFileAction(fileBuffer, file.name);
-        setUploadProgress(100);
-
-        if (processedFile) {
-            toast({
-                title: "Processing Complete",
-                description: "The file has been analyzed.",
-            });
-            onUploadComplete(processedFile, undefined);
-        } else {
-            // This case handles a graceful failure from the server action
-             throw new Error("The server returned an empty response. The file might be invalid or corrupted.");
+    xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+            const percentComplete = (event.loaded / event.total) * 100;
+            setUploadProgress(percentComplete);
         }
+    };
+    
+    xhr.onload = () => {
+        setIsUploading(false);
+        if (xhr.status === 200) {
+            onUploadComplete();
+        } else {
+             try {
+                const response = JSON.parse(xhr.responseText);
+                toast({
+                    title: `Upload Failed (Status: ${xhr.status})`,
+                    description: response.details || response.error || "An unknown server error occurred.",
+                    variant: "destructive"
+                });
+             } catch (e) {
+                 toast({
+                    title: `Upload Failed (Status: ${xhr.status})`,
+                    description: "An unexpected, non-JSON response was received from the server.",
+                    variant: "destructive"
+                });
+             }
+        }
+        resetState();
+    };
 
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during processing.";
-        console.error("Upload & processing failed:", error);
+    xhr.onerror = () => {
+        setIsUploading(false);
         toast({
+            title: "Upload Failed",
+            description: "A network error occurred. Please check your connection.",
             variant: "destructive",
-            title: "Processing Failed",
-            description: errorMessage,
         });
-        onUploadComplete(null, errorMessage);
-    } finally {
-       resetState();
-    }
-  }, [file, onUploadStart, onUploadComplete, resetState, toast]);
+        resetState();
+    };
+
+    xhr.setRequestHeader('X-Original-Filename', file.name);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.send(file);
+    
+  }, [file, onUploadComplete, resetState, toast]);
 
   const handleButtonClick = () => {
     if (fileInputRef.current) {
@@ -102,7 +114,7 @@ export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderPr
             disabled={isUploading}
         >
             <UploadCloud className="mr-2" />
-            Upload & Process File
+            Upload File
         </Button>
       )}
 
@@ -115,14 +127,14 @@ export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderPr
                 </Button>
             </div>
             <Button className="w-full" onClick={handleUpload}>
-                Start Processing
+                Start Upload
             </Button>
         </div>
       )}
 
       {isUploading && (
         <div className="space-y-2 text-center">
-            <p className="text-sm text-muted-foreground">Processing {file?.name}...</p>
+            <p className="text-sm text-muted-foreground">Uploading {file?.name}...</p>
             <Progress value={uploadProgress} />
             <p className="text-xs text-muted-foreground">{Math.round(uploadProgress)}%</p>
         </div>

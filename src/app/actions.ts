@@ -1,17 +1,34 @@
 
 "use server";
 
+import { storage } from '@/lib/firebase';
+import { ref, listAll, getBytes, deleteObject, getDownloadURL, getMetadata } from 'firebase/storage';
 import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
-// This is a placeholder as we are not saving files to disk anymore.
-// The concept of "getting files" will need to be re-evaluated.
-// For now, it returns an empty array.
+// Get all files from Firebase Storage
 export async function getFilesAction(): Promise<UploadedFile[]> {
-  return [];
+    try {
+        const storageRef = ref(storage, 'uploads/');
+        const res = await listAll(storageRef);
+        const files = await Promise.all(
+            res.items.map(async (itemRef) => {
+                const metadata = await getMetadata(itemRef);
+                return {
+                    name: metadata.name,
+                    size: metadata.size,
+                    uploadDate: new Date(metadata.timeCreated),
+                };
+            })
+        );
+        // Sort files by upload date, newest first
+        return files.sort((a, b) => b.uploadDate.getTime() - a.uploadDate.getTime());
+    } catch (error) {
+        console.error("Error fetching files from Firebase Storage:", error);
+        return [];
+    }
 }
-
 
 function findReadableStrings(buffer: Buffer): string | null {
     const guanoKeyword = Buffer.from("GUANO");
@@ -21,11 +38,9 @@ function findReadableStrings(buffer: Buffer): string | null {
         return null;
     }
 
-    // Search for the end of the metadata block, which we'll assume is a null terminator or series of non-printable chars
     let endIndex = guanoIndex + guanoKeyword.length;
     while(endIndex < buffer.length) {
         const charCode = buffer[endIndex];
-        // Stop at the first non-printable character (excluding newline/carriage return)
         if ( (charCode < 32 || charCode > 126) && charCode !== 10 && charCode !== 13) {
             break;
         }
@@ -36,13 +51,15 @@ function findReadableStrings(buffer: Buffer): string | null {
 }
 
 
-export async function processUploadedFileAction(
-  fileBuffer: ArrayBuffer,
-  originalFilename: string,
+export async function processFileAction(
+  filename: string,
 ): Promise<FileContent | null> {
     try {
+        const storageRef = ref(storage, `uploads/${filename}`);
+        const fileBuffer = await getBytes(storageRef);
+
         const buffer = Buffer.from(fileBuffer);
-        const extension = originalFilename.split('.').pop()?.toLowerCase() || '';
+        const extension = filename.split('.').pop()?.toLowerCase() || '';
 
         let content: string;
         let isBinary = false;
@@ -59,30 +76,46 @@ export async function processUploadedFileAction(
         }
         
         if (rawMetadata) {
-            const aiResult = await extractData({ fileContent: rawMetadata, filename: originalFilename });
-             if (aiResult && aiResult.data.length > 0) {
+            const aiResult = await extractData({ fileContent: rawMetadata, filename: filename });
+             if (aiResult && ai.data.length > 0) {
                 extractedData = aiResult.data;
-                // Removed the automatic call to appendToSheet here to isolate the actions.
-                // The user will now trigger this manually from the UI.
             }
         }
 
-        return { content, extension, name: originalFilename, isBinary, rawMetadata, extractedData };
+        return { content, extension, name: filename, isBinary, rawMetadata, extractedData };
 
     } catch(error) {
-        console.error(`Error processing file ${originalFilename}:`, error);
+        console.error(`Error processing file ${filename}:`, error);
         return null;
     }
 }
 
-
-// The delete action is no longer needed as we don't store files.
 export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
-  console.log(`Received delete request for ${filename}, but files are no longer stored.`);
-  return { success: true };
+  try {
+    const storageRef = ref(storage, `uploads/${filename}`);
+    await deleteObject(storageRef);
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "An unknown error occurred.";
+    console.error(`Failed to delete ${filename}:`, error);
+    return { error: message };
+  }
 }
+
+export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
+    try {
+        const storageRef = ref(storage, `uploads/${filename}`);
+        const url = await getDownloadURL(storageRef);
+        return { url };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "An unknown error occurred.";
+        console.error(`Failed to get download URL for ${filename}:`, error);
+        return { error: message };
+    }
+}
+
 
 // Logs are now viewed in the Firebase Console, not from a file.
 export async function getLogsAction(): Promise<string> {
@@ -101,3 +134,4 @@ export async function syncToSheetAction(dataPoint: DataPoint, originalFilename: 
         return { success: false, error: message };
     }
 }
+
