@@ -34,13 +34,11 @@ function getClientAuth() {
 // This function ensures the Admin App is initialized only once.
 function initializeAdminAppOnce(): AdminApp {
     if (getAdminApps().length) {
-        return getAdminApp(); // This uses the imported getAdminApp
+        return getAdminApp();
     }
-    // This will automatically use the App Hosting service account credentials,
-    // but it needs to be told which storage bucket to use.
-    return initializeAdminApp({
-        storageBucket: process.env.GCLOUD_STORAGE_BUCKET,
-    });
+    // In the App Hosting environment, the Admin SDK will automatically find the
+    // service account credentials and the default bucket.
+    return initializeAdminApp();
 }
 
 const adminApp = initializeAdminAppOnce();
