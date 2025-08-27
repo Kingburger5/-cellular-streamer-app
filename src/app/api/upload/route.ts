@@ -3,8 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { google } from 'googleapis';
 import { adminStorage } from "@/lib/firebase-admin";
-import { BUCKET_NAME } from "@/lib/config";
-
 
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -80,7 +78,7 @@ export async function POST(request: NextRequest) {
         
         const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
         
-        const bucket = adminStorage.bucket(BUCKET_NAME);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
 
         await file.save(Buffer.from(fileBuffer), {
