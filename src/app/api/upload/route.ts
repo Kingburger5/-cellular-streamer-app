@@ -2,23 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { google } from 'googleapis';
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getStorage } from "firebase-admin/storage";
+import { adminStorage } from "@/lib/firebase-admin";
 import { BUCKET_NAME } from "@/lib/config";
-
-
-// Initialize Firebase Admin SDK
-const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS 
-  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS)
-  : {};
-
-if (!getApps().length) {
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
-
-const adminStorage = getStorage();
 
 
 async function logRequestToSheet(request: NextRequest) {

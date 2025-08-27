@@ -1,26 +1,11 @@
 
 "use server";
 
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getStorage } from "firebase-admin/storage";
+import { adminStorage } from "@/lib/firebase-admin";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 import { BUCKET_NAME } from "@/lib/config";
-
-
-// Initialize Firebase Admin SDK
-const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS 
-  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS)
-  : {};
-
-if (!getApps().length) {
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
-
-const adminStorage = getStorage();
 
 // Get all files from Firebase Storage
 export async function getFilesAction(): Promise<UploadedFile[]> {
