@@ -10,11 +10,10 @@ import { ServerCrash, FileSearch, Loader } from "lucide-react";
 interface FileDisplayProps {
   fileContent: FileContent | null;
   isLoading: boolean;
-  isDataLoading: boolean;
   error: string | null;
 }
 
-export function FileDisplay({ fileContent, isLoading, isDataLoading, error }: FileDisplayProps) {
+export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps) {
   if (isLoading) {
     return (
       <Card className="h-full flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
@@ -54,7 +53,7 @@ export function FileDisplay({ fileContent, isLoading, isDataLoading, error }: Fi
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow h-0">
-          <FileContentViewer fileContent={fileContent} isDataLoading={isDataLoading} />
+          <FileContentViewer fileContent={fileContent} />
       </CardContent>
     </Card>
   );

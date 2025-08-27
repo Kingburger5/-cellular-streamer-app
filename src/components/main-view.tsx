@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useTransition, useCallback, useEffect } from "react";
+import { useState, useTransition, useCallback } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
 import { deleteFileAction } from "@/app/actions";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
@@ -18,7 +18,7 @@ export function MainView({ initialFiles }: MainViewProps) {
   const [processedFiles, setProcessedFiles] = useState<FileContent[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileContent | null>(null);
 
-  const [isLoading, startTransition] = useTransition();
+  const [isProcessing, startTransition] = useTransition();
 
   const { toast } = useToast();
 
@@ -50,7 +50,8 @@ export function MainView({ initialFiles }: MainViewProps) {
      startTransition(async () => {
         setProcessedFiles(currentFiles => currentFiles.filter(f => f.name !== name));
         if (selectedFile?.name === name) {
-            setSelectedFile(null);
+            const newSelection = processedFiles.length > 1 ? processedFiles[1] : null;
+            setSelectedFile(newSelection);
         }
         // We call the action on the backend even though it does nothing,
         // in case we want to add server-side cleanup later (e.g. from a database).
@@ -60,7 +61,7 @@ export function MainView({ initialFiles }: MainViewProps) {
             description: `Removed ${name} from the list.`,
         });
      });
-  }, [toast, selectedFile]);
+  }, [toast, selectedFile, processedFiles]);
   
   // Map FileContent to the UploadedFile format expected by FileList
   const fileListItems: UploadedFile[] = processedFiles.map(f => ({
@@ -85,8 +86,7 @@ export function MainView({ initialFiles }: MainViewProps) {
       <SidebarInset className="p-4 h-screen overflow-hidden">
         <FileDisplay
             fileContent={selectedFile}
-            isLoading={isLoading}
-            isDataLoading={false} // Data is loaded as part of the single processing step
+            isLoading={isProcessing}
             error={null} // Error handling is now part of the upload process
         />
       </SidebarInset>

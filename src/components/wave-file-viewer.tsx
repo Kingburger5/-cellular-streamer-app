@@ -1,18 +1,22 @@
 
 "use client";
 
+import { useState } from 'react';
 import type { FileContent } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { DataVisualizer } from './data-visualizer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SummaryViewer } from './summary-viewer';
 
-export function WaveFileViewer({ fileContent, isDataLoading }: { fileContent: FileContent, isDataLoading: boolean }) {
+export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
     const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
     const hasRawMetadata = !!fileContent.rawMetadata;
     const hasData = !!fileContent.extractedData;
-    const defaultTab = (hasData || isDataLoading) ? "visualization" : "summary";
+    // Data is considered "loading" if the AI analysis hasn't populated the extractedData field yet.
+    // This is a proxy since the processing happens in a single step. For a true multi-step flow,
+    // a separate isLoading prop would be needed.
+    const isDataLoading = !fileContent.extractedData;
+    const defaultTab = hasData ? "visualization" : "summary";
 
     return (
         <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
