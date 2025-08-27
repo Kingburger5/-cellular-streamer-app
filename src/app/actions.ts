@@ -34,6 +34,9 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
     } catch (error) {
         console.error("Error fetching files from Firebase Storage:", error);
         // Provide a more descriptive error message to the client
+        if (error instanceof Error && 'code' in error && error.code === 'storage/invalid-argument') {
+             throw new Error("Could not fetch files from storage. Please ensure the Storage Bucket is configured correctly in your environment variables.");
+        }
         if (error instanceof Error && 'code' in error && error.code === 403) {
             throw new Error("Permission denied. Please check your Firebase Storage security rules.");
         }
@@ -150,4 +153,3 @@ export async function syncToSheetAction(dataPoint: DataPoint, originalFilename: 
         return { success: false, error: message };
     }
 }
-

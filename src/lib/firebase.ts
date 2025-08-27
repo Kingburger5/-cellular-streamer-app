@@ -4,7 +4,8 @@ import { getStorage } from "firebase/storage";
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { initializeApp as initializeAdminApp, getApps as getAdminApps, getApp as getAdminApp, App as AdminApp } from 'firebase-admin/app';
 import { getStorage as getAdminStorage } from 'firebase-admin/storage';
-import { credential } from 'firebase-admin';
+// The Admin SDK, when run in an App Hosting environment, automatically uses the service account credentials
+// without needing to explicitly create a credential object.
 
 // --- Client-side Firebase Initialization ---
 // This is used by browser components for actions like anonymous sign-in.
@@ -30,17 +31,20 @@ function getClientAuth() {
 
 // --- Server-side Firebase Admin Initialization ---
 // This is used by Server Actions to access storage with privileged permissions.
-function getAdminApp(): AdminApp {
+// This function ensures the Admin App is initialized only once.
+function initializeAdminAppOnce(): AdminApp {
     if (getAdminApps().length) {
-        return getAdminApp();
+        return getAdminApp(); // This uses the imported getAdminApp
     }
-    // This will automatically use the App Hosting service account credentials.
+    // This will automatically use the App Hosting service account credentials,
+    // but it needs to be told which storage bucket to use.
     return initializeAdminApp({
-        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        storageBucket: process.env.GCLOUD_STORAGE_BUCKET,
     });
 }
 
-const adminStorage = getAdminStorage(getAdminApp());
+const adminApp = initializeAdminAppOnce();
+const adminStorage = getAdminStorage(adminApp);
 const clientStorage = getStorage(getClientApp());
 
 export { adminStorage, clientStorage, getClientAuth, signInAnonymously };
