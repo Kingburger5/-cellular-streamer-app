@@ -8,7 +8,8 @@
       "**/node_modules/**"
     ],
     "frameworksBackend": {
-      "region": "asia-east1"
+      "region": "asia-east1",
+      "id": "cellularstreamer"
     }
   }
 }
