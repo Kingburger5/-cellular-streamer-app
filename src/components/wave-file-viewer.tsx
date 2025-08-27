@@ -12,7 +12,7 @@ export function WaveFileViewer({ fileContent, isDataLoading }: { fileContent: Fi
     const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
     const hasRawMetadata = !!fileContent.rawMetadata;
     const hasData = !!fileContent.extractedData;
-    const defaultTab = (hasData || isDataLoading) ? "visualization" : "metadata";
+    const defaultTab = (hasData || isDataLoading) ? "visualization" : "summary";
 
     return (
         <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
