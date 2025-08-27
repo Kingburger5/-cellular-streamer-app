@@ -2,8 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { google } from 'googleapis';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes } from "firebase/storage";
+import { adminStorage } from '@/lib/firebase';
 
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -78,11 +77,15 @@ export async function POST(request: NextRequest) {
         }
         
         const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
-        const storageRef = ref(storage, `uploads/${filename}`);
+        
+        const bucket = adminStorage.bucket();
+        const file = bucket.file(`uploads/${filename}`);
 
         // Upload the file to Firebase Storage
-        await uploadBytes(storageRef, fileBuffer, {
-            contentType: request.headers.get('content-type') || 'application/octet-stream',
+        await file.save(Buffer.from(fileBuffer), {
+            metadata: {
+                contentType: request.headers.get('content-type') || 'application/octet-stream',
+            }
         });
         
         console.log(`[SERVER] Successfully uploaded to Firebase Storage: ${filename}`);

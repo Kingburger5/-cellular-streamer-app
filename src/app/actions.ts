@@ -1,8 +1,7 @@
 
 "use server";
 
-import { storage } from '@/lib/firebase';
-import { ref, listAll, getBytes, deleteObject, getDownloadURL, getMetadata } from 'firebase/storage';
+import { adminStorage } from '@/lib/firebase';
 import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
@@ -10,23 +9,35 @@ import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 // Get all files from Firebase Storage
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
-        const storageRef = ref(storage, 'uploads/');
-        const res = await listAll(storageRef);
-        const files = await Promise.all(
-            res.items.map(async (itemRef) => {
-                const metadata = await getMetadata(itemRef);
+        const bucket = adminStorage.bucket();
+        const [files] = await bucket.getFiles({ prefix: 'uploads/' });
+
+        const fileDetails = await Promise.all(
+            files.map(async (file) => {
+                if (file.name.endsWith('/')) { // Skip directories
+                    return null;
+                }
+                const [metadata] = await file.getMetadata();
                 return {
-                    name: metadata.name,
-                    size: metadata.size,
+                    name: metadata.name.replace('uploads/', ''),
+                    size: Number(metadata.size),
                     uploadDate: new Date(metadata.timeCreated),
                 };
             })
         );
-        // Sort files by upload date, newest first
-        return files.sort((a, b) => b.uploadDate.getTime() - a.uploadDate.getTime());
+        
+        // Filter out any nulls (from directories) and sort
+        return fileDetails
+            .filter((file): file is UploadedFile => file !== null)
+            .sort((a, b) => b.uploadDate.getTime() - a.uploadDate.getTime());
+
     } catch (error) {
         console.error("Error fetching files from Firebase Storage:", error);
-        return [];
+        // Provide a more descriptive error message to the client
+        if (error instanceof Error && 'code' in error && error.code === 403) {
+            throw new Error("Permission denied. Please check your Firebase Storage security rules.");
+        }
+        throw new Error("Could not fetch files from storage.");
     }
 }
 
@@ -55,8 +66,9 @@ export async function processFileAction(
   filename: string,
 ): Promise<FileContent | null> {
     try {
-        const storageRef = ref(storage, `uploads/${filename}`);
-        const fileBuffer = await getBytes(storageRef);
+        const bucket = adminStorage.bucket();
+        const file = bucket.file(`uploads/${filename}`);
+        const [fileBuffer] = await file.download();
 
         const buffer = Buffer.from(fileBuffer);
         const extension = filename.split('.').pop()?.toLowerCase() || '';
@@ -77,7 +89,7 @@ export async function processFileAction(
         
         if (rawMetadata) {
             const aiResult = await extractData({ fileContent: rawMetadata, filename: filename });
-             if (aiResult && ai.data.length > 0) {
+             if (aiResult && aiResult.data.length > 0) {
                 extractedData = aiResult.data;
             }
         }
@@ -94,8 +106,8 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const storageRef = ref(storage, `uploads/${filename}`);
-    await deleteObject(storageRef);
+    const bucket = adminStorage.bucket();
+    await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "An unknown error occurred.";
@@ -106,8 +118,12 @@ export async function deleteFileAction(
 
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
-        const storageRef = ref(storage, `uploads/${filename}`);
-        const url = await getDownloadURL(storageRef);
+        const bucket = adminStorage.bucket();
+        const file = bucket.file(`uploads/${filename}`);
+        const [url] = await file.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+        });
         return { url };
     } catch (error) {
         const message = error instanceof Error ? error.message : "An unknown error occurred.";
