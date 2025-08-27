@@ -1,8 +1,14 @@
 {
-  "apphosting": {
-    "backends": [
-      "cellularstreamer"
+  "hosting": {
+    "source": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
     ],
-    "source": "."
+    "frameworksBackend": {
+      "id": "cellularstreamer",
+      "region": "asia-east1"
+    }
   }
 }
