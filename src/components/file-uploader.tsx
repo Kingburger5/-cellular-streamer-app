@@ -58,7 +58,7 @@ export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderPr
                 title: "Processing Complete",
                 description: "The file has been analyzed.",
             });
-            onUploadComplete(processedFile);
+            onUploadComplete(processedFile, undefined);
         } else {
             // This case handles a graceful failure from the server action
              throw new Error("The server returned an empty response. The file might be invalid or corrupted.");

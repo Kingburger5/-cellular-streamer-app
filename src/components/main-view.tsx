@@ -47,20 +47,22 @@ export function MainView({ initialFiles }: MainViewProps) {
   }
 
   const handleUploadComplete = useCallback((newFile: FileContent | null, error?: string) => {
-    startTransition(() => {
-        if (error) {
+    if (error) {
+        startTransition(() => {
             setError(error);
             setProcessedFiles([]); // Clear any previous files on error
             setSelectedFile(null);
-            return;
-        }
+        });
+        return;
+    }
 
-        if (newFile) {
+    if (newFile) {
+        startTransition(() => {
             setProcessedFiles(currentFiles => [newFile, ...currentFiles]);
-            setSelectedFile(newFile);
+            setSelectedFile(newFile); // This ensures the new file is immediately displayed
             setError(null);
-        }
-    });
+        });
+    }
   }, []);
 
 
@@ -87,7 +89,7 @@ export function MainView({ initialFiles }: MainViewProps) {
   const fileListItems: UploadedFile[] = processedFiles.map(f => ({
       name: f.name,
       // Approximate size, as we don't have the raw file buffer here anymore
-      size: f.content.length, 
+      size: f.isBinary ? (f.content.length * 0.75) : f.content.length, // Base64 approx
       uploadDate: new Date(), // Use current date as we don't store this persistently
   }));
 
