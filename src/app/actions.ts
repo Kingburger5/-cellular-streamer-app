@@ -1,7 +1,7 @@
 
 "use server";
 
-import { adminStorage } from '@/lib/firebase';
+import { adminStorage } from "@/lib/firebase-admin";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
@@ -26,21 +26,13 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
             })
         );
         
-        // Filter out any nulls (from directories) and sort
         return fileDetails
             .filter((file): file is UploadedFile => file !== null)
             .sort((a, b) => b.uploadDate.getTime() - a.uploadDate.getTime());
 
     } catch (error) {
-        console.error("Error fetching files from Firebase Storage:", error);
-        // Provide a more descriptive error message to the client
-        if (error instanceof Error && 'code' in error && error.code === 'storage/invalid-argument') {
-             throw new Error("Could not fetch files from storage. Please ensure the Storage Bucket is configured correctly in your environment variables.");
-        }
-        if (error instanceof Error && 'code' in error && error.code === 403) {
-            throw new Error("Permission denied. Please check your Firebase Storage security rules.");
-        }
-        throw new Error("Could not fetch files from storage.");
+        console.error("[Server] Error fetching files from Firebase Storage:", error);
+        throw new Error("Could not fetch files from storage. Please ensure your Firebase project is configured correctly and security rules are set.");
     }
 }
 

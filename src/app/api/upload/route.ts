@@ -2,11 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { google } from 'googleapis';
-import { adminStorage } from '@/lib/firebase';
+import { adminStorage } from "@/lib/firebase-admin";
 
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
-    const LOG_SHEET_NAME = "ConnectionLog"; // Log to a separate sheet
+    const LOG_SHEET_NAME = "ConnectionLog";
     const GOOGLE_SERVICE_ACCOUNT_CREDENTIALS = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
      
     if (!SPREADSHEET_ID || !GOOGLE_SERVICE_ACCOUNT_CREDENTIALS) {
@@ -25,11 +25,11 @@ async function logRequestToSheet(request: NextRequest) {
         const timestamp = format(new Date(), "yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
         const ip = request.ip ?? request.headers.get('x-forwarded-for') ?? 'N/A';
         const userAgent = request.headers.get('user-agent') || 'N/A';
-        const contentType = request.headers.get('content-type') || 'N/A';
+        const contentType = request.headers.get('content-type') || 'N-A';
         
         const headers: string[] = [];
         request.headers.forEach((value, key) => {
-            if (key.toLowerCase().startsWith('x-')) { // Log custom headers
+            if (key.toLowerCase().startsWith('x-')) {
                 headers.push(`${key}: ${value}`);
             }
         });
@@ -81,7 +81,6 @@ export async function POST(request: NextRequest) {
         const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
 
-        // Upload the file to Firebase Storage
         await file.save(Buffer.from(fileBuffer), {
             metadata: {
                 contentType: request.headers.get('content-type') || 'application/octet-stream',
