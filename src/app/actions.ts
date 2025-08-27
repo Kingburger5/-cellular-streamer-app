@@ -62,9 +62,8 @@ export async function processUploadedFileAction(
             const aiResult = await extractData({ fileContent: rawMetadata, filename: originalFilename });
              if (aiResult && aiResult.data.length > 0) {
                 extractedData = aiResult.data;
-                // After successful extraction, trigger the Google Sheet update for the first data point.
-                const dataPoint = aiResult.data[0];
-                await appendToSheet({ dataPoint: dataPoint, originalFilename: originalFilename });
+                // Removed the automatic call to appendToSheet here to isolate the actions.
+                // The user will now trigger this manually from the UI.
             }
         }
 
@@ -88,4 +87,17 @@ export async function deleteFileAction(
 // Logs are now viewed in the Firebase Console, not from a file.
 export async function getLogsAction(): Promise<string> {
     return "Connection logs are now available in the Firebase Console under the 'Logs' tab for your App Hosting backend. Local file logging has been disabled.";
+}
+
+// This new action will be called directly from the UI.
+export async function syncToSheetAction(dataPoint: DataPoint, originalFilename: string) {
+    try {
+        const result = await appendToSheet({ dataPoint, originalFilename });
+        console.log("Sync to sheet result:", result);
+        return { success: true, message: result };
+    } catch(error) {
+        const message = error instanceof Error ? error.message : "An unknown error occurred.";
+        console.error("Sync to sheet action failed:", error);
+        return { success: false, error: message };
+    }
 }

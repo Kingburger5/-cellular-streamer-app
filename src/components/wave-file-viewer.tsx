@@ -30,7 +30,7 @@ export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
                 <SummaryViewer fileContent={fileContent} />
             </TabsContent>
             <TabsContent value="visualization" className="flex-grow h-0">
-                 <DataVisualizer data={fileContent.extractedData} isLoading={isDataLoading}/>
+                 <DataVisualizer data={fileContent.extractedData} fileName={fileContent.name} isLoading={isDataLoading}/>
             </TabsContent>
             <TabsContent value="audio" className="flex-grow h-0">
                  <Card className="h-full">

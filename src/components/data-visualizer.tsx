@@ -5,10 +5,33 @@ import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock } from 'lucide-react';
+import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock, UploadCloud } from 'lucide-react';
+import { Button } from './ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { syncToSheetAction } from '@/app/actions';
+import { useState, useTransition } from 'react';
 
-export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, isLoading: boolean }) {
+export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[] | null, fileName: string, isLoading: boolean }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const { toast } = useToast();
+  const [isSyncing, startSyncTransition] = useTransition();
+
+
+  const handleSyncToSheet = () => {
+    if (!data || data.length === 0) {
+        toast({ title: "No Data", description: "There is no data to sync to the sheet.", variant: "destructive" });
+        return;
+    }
+    startSyncTransition(async () => {
+        toast({ title: "Syncing...", description: "Sending extracted data to Google Sheets." });
+        const result = await syncToSheetAction(data[0], fileName);
+        if (result.success) {
+            toast({ title: "Sync Successful", description: "Data has been successfully synced to your Google Sheet." });
+        } else {
+            toast({ title: "Sync Failed", description: result.error, variant: "destructive" });
+        }
+    });
+  }
 
   if (isLoading) {
     return (
@@ -52,7 +75,13 @@ export function DataVisualizer({ data, isLoading }: { data: DataPoint[] | null, 
 
   return (
     <ScrollArea className="h-full">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 p-1">
+      <div className="flex justify-end p-1 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+          <Button onClick={handleSyncToSheet} disabled={isSyncing}>
+              {isSyncing ? <Loader className="animate-spin" /> : <UploadCloud />}
+              Sync to Sheet
+          </Button>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 p-1 pt-2">
         
         <Card className="lg:col-span-3">
           <CardHeader>
