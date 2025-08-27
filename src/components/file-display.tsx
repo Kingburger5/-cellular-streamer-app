@@ -3,7 +3,7 @@
 
 import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileContentViewer } from "./file-content-viewer";
+import { WaveFileViewer } from "./wave-file-viewer";
 import { Badge } from "./ui/badge";
 import { ServerCrash, FileSearch, Loader } from "lucide-react";
 
@@ -44,6 +44,8 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
     );
   }
 
+  // The WaveFileViewer now contains the Tabs and handles all different views.
+  // This simplifies the FileDisplay component.
   return (
     <Card className="h-full flex flex-col">
       <CardHeader>
@@ -53,7 +55,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow h-0">
-          <FileContentViewer fileContent={fileContent} />
+          <WaveFileViewer fileContent={fileContent} />
       </CardContent>
     </Card>
   );

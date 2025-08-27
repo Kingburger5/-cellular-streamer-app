@@ -8,10 +8,12 @@ import { UploadCloud, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatBytes } from "@/lib/utils";
 import { processUploadedFileAction } from "@/app/actions";
+import type { FileContent } from "@/lib/types";
+
 
 interface FileUploaderProps {
     onUploadStart: () => void;
-    onUploadComplete: (processedFile: any) => void;
+    onUploadComplete: (processedFile: FileContent | null, error?: string) => void;
 }
 
 export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderProps) {
@@ -41,34 +43,36 @@ export function FileUploader({ onUploadStart, onUploadComplete }: FileUploaderPr
     if (!file) return;
 
     setIsUploading(true);
-    setUploadProgress(0); // For visual feedback, though it will be quick
+    setUploadProgress(0);
     onUploadStart();
 
     try {
         const fileBuffer = await file.arrayBuffer();
-        setUploadProgress(50); // Mark progress
+        setUploadProgress(50);
 
         const processedFile = await processUploadedFileAction(fileBuffer, file.name);
-
         setUploadProgress(100);
 
         if (processedFile) {
             toast({
                 title: "Processing Complete",
-                description: "Your file has been analyzed and the data is now visible.",
+                description: "The file has been analyzed.",
             });
             onUploadComplete(processedFile);
         } else {
-            throw new Error("The server could not process the file.");
+            // This case handles a graceful failure from the server action
+             throw new Error("The server returned an empty response. The file might be invalid or corrupted.");
         }
 
     } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during processing.";
         console.error("Upload & processing failed:", error);
         toast({
             variant: "destructive",
             title: "Processing Failed",
-            description: error instanceof Error ? error.message : "An unknown error occurred.",
+            description: errorMessage,
         });
+        onUploadComplete(null, errorMessage);
     } finally {
        resetState();
     }

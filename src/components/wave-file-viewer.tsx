@@ -11,12 +11,19 @@ import { SummaryViewer } from './summary-viewer';
 export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
     const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
     const hasRawMetadata = !!fileContent.rawMetadata;
-    const hasData = !!fileContent.extractedData;
-    // Data is considered "loading" if the AI analysis hasn't populated the extractedData field yet.
-    // This is a proxy since the processing happens in a single step. For a true multi-step flow,
-    // a separate isLoading prop would be needed.
+    const hasData = !!fileContent.extractedData && fileContent.extractedData.length > 0;
+    
+    // The data is loading if the AI analysis hasn't populated the extractedData field yet.
+    // This is a proxy since the processing happens in a single step.
     const isDataLoading = !fileContent.extractedData;
-    const defaultTab = hasData ? "visualization" : "summary";
+
+    // Determine the best default tab to show.
+    let defaultTab = "summary";
+    if (hasData) {
+        defaultTab = "visualization";
+    } else if (!hasRawMetadata && audioSrc) {
+        defaultTab = "audio";
+    }
 
     return (
         <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
@@ -38,10 +45,12 @@ export function WaveFileViewer({ fileContent }: { fileContent: FileContent }) {
                         <CardTitle>Audio Playback</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {audioSrc && (
+                        {audioSrc ? (
                             <audio controls src={audioSrc} className="w-full">
                                 Your browser does not support the audio element.
                             </audio>
+                        ) : (
+                            <p className="text-muted-foreground">No audio available for this file type.</p>
                         )}
                     </CardContent>
                 </Card>

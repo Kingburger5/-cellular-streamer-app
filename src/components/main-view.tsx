@@ -8,6 +8,14 @@ import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar"
 import { FileList } from "./file-list";
 import { FileDisplay } from "./file-display";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import { DebugLogViewer } from "./debug-log-viewer";
+
 
 interface MainViewProps {
   initialFiles: UploadedFile[]; // This will be empty now but kept for structure
@@ -19,6 +27,7 @@ export function MainView({ initialFiles }: MainViewProps) {
   const [selectedFile, setSelectedFile] = useState<FileContent | null>(null);
 
   const [isProcessing, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const { toast } = useToast();
 
@@ -32,30 +41,41 @@ export function MainView({ initialFiles }: MainViewProps) {
 
   const handleUploadStart = () => {
     startTransition(() => {
-        // Clear the current view to show a loading state
+        setError(null);
         setSelectedFile(null);
     });
   }
 
-  const handleUploadComplete = useCallback((newFile: FileContent) => {
+  const handleUploadComplete = useCallback((newFile: FileContent | null, error?: string) => {
     startTransition(() => {
-        // Add new file to the beginning of the list and select it
-        setProcessedFiles(currentFiles => [newFile, ...currentFiles]);
-        setSelectedFile(newFile);
+        if (error) {
+            setError(error);
+            setProcessedFiles([]); // Clear any previous files on error
+            setSelectedFile(null);
+            return;
+        }
+
+        if (newFile) {
+            setProcessedFiles(currentFiles => [newFile, ...currentFiles]);
+            setSelectedFile(newFile);
+            setError(null);
+        }
     });
   }, []);
 
 
   const handleDeleteFile = useCallback((name: string) => {
      startTransition(async () => {
-        setProcessedFiles(currentFiles => currentFiles.filter(f => f.name !== name));
+        const remainingFiles = processedFiles.filter(f => f.name !== name);
+        setProcessedFiles(remainingFiles);
+
         if (selectedFile?.name === name) {
-            const newSelection = processedFiles.length > 1 ? processedFiles[1] : null;
+            // Select the next file in the list, or null if it's empty
+            const newSelection = remainingFiles.length > 0 ? remainingFiles[0] : null;
             setSelectedFile(newSelection);
         }
-        // We call the action on the backend even though it does nothing,
-        // in case we want to add server-side cleanup later (e.g. from a database).
-        await deleteFileAction(name); 
+
+        await deleteFileAction(name);
         toast({
             title: "File Removed",
             description: `Removed ${name} from the list.`,
@@ -84,11 +104,24 @@ export function MainView({ initialFiles }: MainViewProps) {
         />
       </Sidebar>
       <SidebarInset className="p-4 h-screen overflow-hidden">
-        <FileDisplay
-            fileContent={selectedFile}
-            isLoading={isProcessing}
-            error={null} // Error handling is now part of the upload process
-        />
+          <Tabs defaultValue="main" className="h-full w-full flex flex-col">
+            <div className="flex justify-end">
+                <TabsList>
+                    <TabsTrigger value="main">File Viewer</TabsTrigger>
+                    <TabsTrigger value="logs">Connection Log</TabsTrigger>
+                </TabsList>
+            </div>
+            <TabsContent value="main" className="flex-grow h-0 mt-4">
+                 <FileDisplay
+                    fileContent={selectedFile}
+                    isLoading={isProcessing}
+                    error={error}
+                />
+            </TabsContent>
+            <TabsContent value="logs" className="flex-grow h-0 mt-4">
+                <DebugLogViewer />
+            </TabsContent>
+        </Tabs>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { UploadedFile } from "@/lib/types";
+import type { UploadedFile, FileContent } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
 import {
   SidebarHeader,
@@ -35,7 +35,7 @@ interface FileListProps {
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
   onUploadStart: () => void;
-  onUploadComplete: (file: any) => void; // A bit generic, but needed for the processed file
+  onUploadComplete: (file: FileContent | null, error?: string) => void;
   onDeleteFile: (name: string) => void;
 }
 
@@ -86,9 +86,9 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadStart, onU
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the file
+                            This action cannot be undone. This will remove the file
                             <strong className="mx-1">{file.name}</strong>
-                             and remove its data from our servers.
+                             from the session.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
