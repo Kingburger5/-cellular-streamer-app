@@ -1,2 +1,8 @@
-
-{}
+{
+  "apphosting": {
+    "backends": [
+      "cellularstreamer"
+    ],
+    "source": "."
+  }
+}
