@@ -2,7 +2,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { google } from 'googleapis';
-import { adminStorage } from "@/lib/firebase-admin";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
+import { getStorage } from "firebase-admin/storage";
+import { BUCKET_NAME } from "@/lib/config";
+
+
+// Initialize Firebase Admin SDK
+const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS 
+  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS)
+  : {};
+
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
+  });
+}
+
+const adminStorage = getStorage();
+
 
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -78,7 +95,7 @@ export async function POST(request: NextRequest) {
         
         const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
         
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
 
         await file.save(Buffer.from(fileBuffer), {

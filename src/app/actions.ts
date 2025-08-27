@@ -1,15 +1,31 @@
 
 "use server";
 
-import { adminStorage } from "@/lib/firebase-admin";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
+import { getStorage } from "firebase-admin/storage";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
+import { BUCKET_NAME } from "@/lib/config";
+
+
+// Initialize Firebase Admin SDK
+const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS 
+  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS)
+  : {};
+
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
+  });
+}
+
+const adminStorage = getStorage();
 
 // Get all files from Firebase Storage
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const [files] = await bucket.getFiles({ prefix: 'uploads/' });
 
         const fileDetails = await Promise.all(
@@ -61,7 +77,7 @@ export async function processFileAction(
   filename: string,
 ): Promise<FileContent | null> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
         const [fileBuffer] = await file.download();
 
@@ -101,7 +117,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucket = adminStorage.bucket();
+    const bucket = adminStorage.bucket(BUCKET_NAME);
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
@@ -113,7 +129,7 @@ export async function deleteFileAction(
 
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
         const [url] = await file.getSignedUrl({
             action: 'read',
