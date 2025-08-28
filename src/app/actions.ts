@@ -41,20 +41,38 @@ function findReadableStrings(buffer: Buffer): string | null {
     const guanoIndex = buffer.indexOf(guanoKeyword);
 
     if (guanoIndex === -1) {
+        console.log("GUANO keyword not found in buffer.");
         return null;
     }
 
-    let endIndex = guanoIndex + guanoKeyword.length;
-    while(endIndex < buffer.length) {
-        const charCode = buffer[endIndex];
-        // Allow printable ASCII characters, plus newline and carriage return
-        if ( (charCode < 32 || charCode > 126) && charCode !== 10 && charCode !== 13) {
-            break;
-        }
-        endIndex++;
+    // The 4 bytes before GUANO should contain the length of the metadata chunk.
+    // It's a 32-bit little-endian unsigned integer.
+    const lengthOffset = guanoIndex - 4;
+    if (lengthOffset < 0) {
+        console.log("Not enough space for length before GUANO keyword.");
+        return null;
     }
     
-    return buffer.toString('utf-8', guanoIndex, endIndex).trim();
+    try {
+        const chunkLength = buffer.readUInt32LE(lengthOffset);
+        
+        // The metadata starts right after the length.
+        const metadataStart = guanoIndex;
+        const metadataEnd = metadataStart + chunkLength;
+        
+        if (metadataEnd > buffer.length) {
+            console.log("Metadata chunk length exceeds buffer size.");
+            return null;
+        }
+        
+        // Extract the metadata chunk as a string.
+        const metadata = buffer.toString('utf-8', metadataStart, metadataEnd);
+        return metadata.trim();
+
+    } catch (e) {
+        console.error("Error reading metadata length:", e);
+        return null;
+    }
 }
 
 
