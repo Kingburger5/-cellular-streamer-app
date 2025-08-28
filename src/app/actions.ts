@@ -6,10 +6,13 @@ import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
+// This is the correct, hardcoded bucket name for your project.
+const BUCKET_NAME = 'cellular-data-streamer.appspot.com';
+
 // Get all files from Firebase Storage
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const [files] = await bucket.getFiles({ prefix: 'uploads/' });
 
         const fileDetails = await Promise.all(
@@ -61,7 +64,7 @@ export async function processFileAction(
   filename: string,
 ): Promise<FileContent | null> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
         const [fileBuffer] = await file.download();
 
@@ -101,7 +104,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucket = adminStorage.bucket();
+    const bucket = adminStorage.bucket(BUCKET_NAME);
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
@@ -113,7 +116,7 @@ export async function deleteFileAction(
 
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
         const [url] = await file.getSignedUrl({
             action: 'read',

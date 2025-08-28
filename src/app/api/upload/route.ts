@@ -4,6 +4,9 @@ import { format } from 'date-fns';
 import { google } from 'googleapis';
 import { adminStorage } from "@/lib/firebase-admin";
 
+// This is the correct, hardcoded bucket name for your project.
+const BUCKET_NAME = 'cellular-data-streamer.appspot.com';
+
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
     const LOG_SHEET_NAME = "ConnectionLog";
@@ -78,7 +81,7 @@ export async function POST(request: NextRequest) {
         
         const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
         
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
 
         await file.save(Buffer.from(fileBuffer), {

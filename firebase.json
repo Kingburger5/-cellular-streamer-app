@@ -7,7 +7,7 @@
       "**/node_modules/**"
     ],
     "frameworksBackend": {
-      "id": "my-app",
+      "id": "cellularstreamer",
       "region": "asia-east1"
     }
   }
