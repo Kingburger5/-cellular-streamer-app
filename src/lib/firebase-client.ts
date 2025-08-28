@@ -5,12 +5,12 @@ import { getAuth, signInAnonymously, onAuthStateChanged, User } from "firebase/a
 import type { UploadedFile } from "./types";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyDWxIExVVeOR4eMaG8rYvb_svCquk8vWSg",
+  authDomain: "cellular-data-streamer.firebaseapp.com",
+  projectId: "cellular-data-streamer",
+  storageBucket: "cellular-data-streamer.firebasestorage.app",
+  messagingSenderId: "945649809294",
+  appId: "1:945649809294:web:81866a3f9e7734a96d16df"
 };
 
 let app: FirebaseApp;
