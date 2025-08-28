@@ -15,12 +15,12 @@ try {
         if (serviceAccountCreds) {
              adminApp = initializeApp({
                 credential: cert(JSON.parse(serviceAccountCreds)),
-                storageBucket: "cellular-data-streamer.firebasestorage.app",
+                storageBucket: "cellular-data-streamer.appspot.com",
             });
         } else {
             // This will use the default credentials in App Hosting.
             adminApp = initializeApp({
-                storageBucket: "cellular-data-streamer.firebasestorage.app",
+                storageBucket: "cellular-data-streamer.appspot.com",
             });
         }
     } else {
