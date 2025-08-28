@@ -9,7 +9,7 @@ async function logRequestToSheet(request: NextRequest) {
     const LOG_SHEET_NAME = "ConnectionLog";
     const GOOGLE_SERVICE_ACCOUNT_CREDENTIALS = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
      
-    if (!SPREADSHEET_ID || !GOOGLE_SERVICE_ACCOUNT_CREDENTIALS) {
+    if (!SPREADSHEET_ID || !LOG_SHEET_NAME || !GOOGLE_SERVICE_ACCOUNT_CREDENTIALS) {
       console.log("Google Sheets env vars for logging not set. Skipping.");
       return;
     }

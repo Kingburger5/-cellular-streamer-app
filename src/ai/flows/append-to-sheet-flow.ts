@@ -60,7 +60,7 @@ const appendToSheetFlow = ai.defineFlow(
             dataPoint.make || '',
             dataPoint.model || '',
             dataPoint.serial || '',
-            dataPoint.temperature || '',
+            dataPoint.temperature ? dataPoint.temperature.toString() : '',
             '', // File Type - can be derived from filename if needed
             originalFilename,
             new Date().toISOString(), // Date Added
