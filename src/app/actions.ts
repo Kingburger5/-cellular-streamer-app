@@ -3,7 +3,6 @@
 
 import { adminStorage } from "@/lib/firebase-admin";
 import { extractData } from "@/ai/flows/extract-data-flow";
-import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 // This function is no longer called by the main view but is kept for potential future server-side needs.
@@ -178,13 +177,8 @@ export async function getLogsAction(): Promise<string> {
 
 // This new action will be called directly from the UI.
 export async function syncToSheetAction(dataPoint: DataPoint, originalFilename: string) {
-    try {
-        const result = await appendToSheet({ dataPoint, originalFilename });
-        console.log("Sync to sheet result:", result);
-        return { success: true, message: result };
-    } catch(error) {
-        const message = error instanceof Error ? error.message : "An unknown error occurred.";
-        console.error("Sync to sheet action failed:", error);
-        return { success: false, error: message };
-    }
+    // This functionality has been temporarily disabled.
+    const message = "Google Sheet functionality is currently disabled.";
+    console.log(message);
+    return { success: false, error: message };
 }
