@@ -36,9 +36,11 @@ export function MainView({ initialFiles }: MainViewProps) {
   const { toast } = useToast();
 
   const handleSelectFile = useCallback((name: string) => {
+    if (name === selectedFileName) return; // Don't re-process if the same file is clicked
     setSelectedFileName(name);
     setError(null);
-  }, []);
+    setActiveFileContent(null); // Clear previous content immediately
+  }, [selectedFileName]);
 
   const refreshFileList = useCallback(async () => {
     startFileListTransition(async () => {
@@ -46,10 +48,9 @@ export function MainView({ initialFiles }: MainViewProps) {
       try {
         const updatedFiles = await getClientFiles();
         setFiles(updatedFiles);
-        if (selectedFileName && !updatedFiles.some(f => f.name === selectedFileName)) {
-            setSelectedFileName(null);
-        } else if (!selectedFileName && updatedFiles.length > 0) {
-            setSelectedFileName(updatedFiles[0].name);
+        // If no file is selected, or the selected file was deleted, select the first one.
+        if ((!selectedFileName && updatedFiles.length > 0) || (selectedFileName && !updatedFiles.some(f => f.name === selectedFileName))) {
+          setSelectedFileName(updatedFiles[0]?.name || null);
         }
       } catch (err: any) {
         setFileListError(err.message || "An unknown error occurred while fetching files.");
@@ -67,7 +68,6 @@ export function MainView({ initialFiles }: MainViewProps) {
   useEffect(() => {
     if (selectedFileName) {
       startTransition(async () => {
-        setActiveFileContent(null); // Clear previous content
         const content = await processFileAction(selectedFileName);
         if (content) {
           setActiveFileContent(content);
@@ -76,6 +76,7 @@ export function MainView({ initialFiles }: MainViewProps) {
         }
       });
     } else {
+        // If no file is selected, clear the content.
         setActiveFileContent(null);
     }
   }, [selectedFileName]);
@@ -94,6 +95,7 @@ export function MainView({ initialFiles }: MainViewProps) {
                 description: `${name} has been deleted from storage.`,
             });
             await refreshFileList();
+            // If the deleted file was the selected one, clear the selection.
             if (selectedFileName === name) {
                 setSelectedFileName(null);
             }
@@ -118,7 +120,7 @@ export function MainView({ initialFiles }: MainViewProps) {
                 <AlertDescription>
                     {fileListError}
                     <br/><br/>
-                    Please ensure you have set your Storage Security Rules in the Firebase Console.
+                    Please ensure your Storage Security Rules in the Firebase Console are correct.
                 </AlertDescription>
              </Alert>
            </div>
@@ -133,7 +135,7 @@ export function MainView({ initialFiles }: MainViewProps) {
           />
         )}
       </Sidebar>
-      <SidebarInset className="p-4 h-screen overflow-hidden">
+      <SidebarInset className="p-4 h-screen overflow-y-auto">
           <Tabs defaultValue="main" className="h-full w-full flex flex-col">
             <div className="flex justify-end">
                 <TabsList>
@@ -144,7 +146,7 @@ export function MainView({ initialFiles }: MainViewProps) {
             <TabsContent value="main" className="flex-grow h-0 mt-4">
                  <FileDisplay
                     fileContent={activeFileContent}
-                    isLoading={isLoading}
+                    isLoading={isLoading && !activeFileContent} // Show loading only when there's no stale content
                     error={error}
                 />
             </TabsContent>

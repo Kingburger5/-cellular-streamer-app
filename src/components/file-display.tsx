@@ -9,6 +9,9 @@ import { ServerCrash, FileSearch, Loader, Download } from "lucide-react";
 import { Button } from "./ui/button";
 import { getDownloadUrlAction } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
+import { DataVisualizer } from "./data-visualizer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SummaryViewer } from "./summary-viewer";
 
 interface FileDisplayProps {
   fileContent: FileContent | null;
@@ -43,8 +46,8 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
     return (
       <Card className="h-full flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
         <Loader className="w-12 h-12 mb-4 animate-spin" />
-        <h3 className="font-semibold">Loading File Data...</h3>
-        <p className="text-sm">Please wait while the file is being retrieved and analyzed.</p>
+        <h3 className="font-semibold">Loading & Processing File...</h3>
+        <p className="text-sm">Please wait while the file is retrieved and analyzed by the AI.</p>
       </Card>
     );
   }
@@ -68,6 +71,22 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
       </Card>
     );
   }
+  
+  const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
+  const hasRawMetadata = !!fileContent.rawMetadata;
+  const hasData = !!fileContent.extractedData && fileContent.extractedData.length > 0;
+  
+  // The data is loading if the AI analysis hasn't populated the extractedData field yet.
+  const isDataLoading = fileContent.rawMetadata ? !fileContent.extractedData : false;
+
+  // Determine the best default tab to show.
+  let defaultTab = "summary";
+  if (hasData) {
+      defaultTab = "visualization";
+  } else if (!hasRawMetadata && audioSrc) {
+      defaultTab = "audio";
+  }
+
 
   return (
     <Card className="h-full flex flex-col">
@@ -78,7 +97,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
                   <span className="truncate">{fileContent.name}</span>
                   <Badge variant="outline">{fileContent.extension}</Badge>
                 </CardTitle>
-                <CardDescription>File from persistent storage.</CardDescription>
+                <CardDescription>File from persistent storage. Select a tab to view details.</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={handleDownload}>
                 <Download className="mr-2" />
@@ -87,7 +106,53 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
         </div>
       </CardHeader>
       <CardContent className="flex-grow h-0">
-          <WaveFileViewer fileContent={fileContent} />
+          <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
+              <TabsList className="shrink-0">
+                  <TabsTrigger value="summary" disabled={!hasRawMetadata}>AI Summary</TabsTrigger>
+                  <TabsTrigger value="visualization" disabled={!hasRawMetadata}>Data Visualization</TabsTrigger>
+                  <TabsTrigger value="audio" disabled={!audioSrc}>Audio Playback</TabsTrigger>
+                  <TabsTrigger value="metadata" disabled={!hasRawMetadata}>Raw Metadata</TabsTrigger>
+              </TabsList>
+              <TabsContent value="summary" className="flex-grow h-0 mt-4">
+                  <SummaryViewer fileContent={fileContent} />
+              </TabsContent>
+              <TabsContent value="visualization" className="flex-grow h-0 mt-4">
+                  <DataVisualizer data={fileContent.extractedData} fileName={fileContent.name} isLoading={isDataLoading}/>
+              </TabsContent>
+              <TabsContent value="audio" className="flex-grow h-0 mt-4">
+                  <Card className="h-full">
+                      <CardHeader>
+                          <CardTitle>Audio Playback</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                          {audioSrc ? (
+                              <audio controls src={audioSrc} className="w-full">
+                                  Your browser does not support the audio element.
+                              </audio>
+                          ) : (
+                              <p className="text-muted-foreground">No audio available for this file type.</p>
+                          )}
+                      </CardContent>
+                  </Card>
+              </TabsContent>
+              <TabsContent value="metadata" className="flex-grow h-0 mt-4">
+                  <Card className="h-full">
+                      <CardHeader>
+                          <CardTitle>Extracted Raw Metadata</CardTitle>
+                          <CardDescription>The raw text block found in the binary file.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                          {fileContent.rawMetadata ? (
+                              <pre className="text-xs bg-muted p-4 rounded-lg overflow-x-auto h-full max-h-full">
+                                  <code>{fileContent.rawMetadata}</code>
+                              </pre>
+                          ) : (
+                              <p className="text-muted-foreground">No parsable GUANO metadata was found in this file.</p>
+                          )}
+                      </CardContent>
+                  </Card>
+              </TabsContent>
+          </Tabs>
       </CardContent>
     </Card>
   );
