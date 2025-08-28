@@ -86,7 +86,7 @@ export async function processFileAction(
         const file = bucket.file(`uploads/${filename}`);
         [fileBuffer] = await file.download();
     } catch (error: any) {
-        console.error(`[SERVER_ERROR] Step 1 Failed: Could not download file '${filename}' from Firebase Storage.`, error);
+        console.error(`[SERVER_ERROR] Step 1 Failed: Could not download file '${filename}' from Firebase Storage. Full Error:`, error);
         return { error: `Failed to download file from storage. See server logs for details. Code: ${error.code}` };
     }
 

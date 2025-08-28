@@ -9,7 +9,11 @@ import { Button } from "./ui/button";
 export function DebugLogViewer() {
     
     const openLogsInNewTab = () => {
-        const consoleUrl = `https://console.cloud.google.com/logs/viewer?project=cellular-data-streamer&resource=apphosting.googleapis.com%2FBackend%2Fmy-app`;
+        // This URL is constructed based on standard Google Cloud Logging for App Hosting.
+        // It assumes the project ID and backend ID from the firebase.json and apphosting.yaml files.
+        const projectID = "cellular-data-streamer";
+        const backendID = "cellularstreamer";
+        const consoleUrl = `https://console.cloud.google.com/logs/viewer?project=${projectID}&resource=apphosting.googleapis.com%2FBackend%2F${backendID}`;
         window.open(consoleUrl, '_blank');
     }
 
@@ -33,9 +37,9 @@ export function DebugLogViewer() {
             <CardContent className="flex-grow h-0">
                 <div className="h-full w-full bg-muted rounded-md p-6 flex flex-col items-center justify-center text-center">
                    <Info className="w-12 h-12 mb-4 text-muted-foreground" />
-                   <h3 className="font-semibold">View Logs in Firebase Console</h3>
+                   <h3 className="font-semibold">View Logs in Google Cloud</h3>
                    <p className="text-sm text-muted-foreground max-w-md">
-                    To see live logs from your cellular devices hitting the `/api/upload` endpoint, click the button above to go to the Firebase console. Local file logging has been disabled to support the production hosting environment.
+                    To see live logs from your server, including file processing and potential errors, click the button above to go to the Google Cloud Logging page for this backend. Local file logging has been disabled.
                    </p>
                 </div>
             </CardContent>
