@@ -81,15 +81,19 @@ export async function processFileAction(
 ): Promise<FileContent | { error: string }> {
     let fileBuffer: Buffer;
     try {
+        console.log(`[SERVER_INFO] Step 1 Started: Downloading '${filename}' from Firebase Storage.`);
         const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
-        [fileBuffer] = await file.download();
+        const [downloadedBuffer] = await file.download();
+        fileBuffer = downloadedBuffer;
+        console.log(`[SERVER_INFO] Step 1 Success: Successfully downloaded ${fileBuffer.byteLength} bytes.`);
     } catch (error: any) {
         console.error(`[SERVER_ERROR] Step 1 Failed: Could not download file '${filename}' from Firebase Storage. Full Error:`, error);
         return { error: `Failed to download file from storage. See server logs for details. Code: ${error.code}` };
     }
 
     try {
+        console.log(`[SERVER_INFO] Step 2 Started: Processing content for '${filename}'.`);
         const buffer = Buffer.from(fileBuffer);
         const extension = filename.split('.').pop()?.toLowerCase() || '';
 
@@ -104,15 +108,19 @@ export async function processFileAction(
             rawMetadata = findReadableStrings(buffer);
             if (!rawMetadata) {
                  console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file '${filename}'.`);
+            } else {
+                 console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block.`);
             }
         } else {
-            try {
+             try {
                 content = buffer.toString("utf-8");
+                rawMetadata = content; // For text files, the whole content is metadata.
+                 console.log(`[SERVER_INFO] Step 2 Success: Processed text file '${filename}'.`);
             } catch (e) {
                 isBinary = true;
                 content = `data:application/octet-stream;base64,${buffer.toString('base64')}`;
+                 console.log(`[SERVER_INFO] Step 2 Incomplete: Could not decode as UTF-8, treating as binary.`);
             }
-            rawMetadata = content;
         }
         
         if (rawMetadata) {
@@ -129,6 +137,8 @@ export async function processFileAction(
                  console.error(`[SERVER_ERROR] Step 3 Failed: AI data extraction failed for '${filename}'.`, aiError);
                  // Still return the file content, just without the extracted data
             }
+        } else {
+             console.log(`[SERVER_INFO] Step 3 Skipped: No raw metadata to send to AI for '${filename}'.`);
         }
 
         return { content, extension, name: filename, isBinary, rawMetadata, extractedData };
@@ -173,12 +183,4 @@ export async function getDownloadUrlAction(filename: string): Promise<{ url: str
 // Logs are now viewed in the Firebase Console, not from a file.
 export async function getLogsAction(): Promise<string> {
     return "Connection logs are now available in the Firebase Console under the 'Logs' tab for your App Hosting backend. Local file logging has been disabled.";
-}
-
-// This new action will be called directly from the UI.
-export async function syncToSheetAction(dataPoint: DataPoint, originalFilename: string) {
-    // This functionality has been temporarily disabled.
-    const message = "Google Sheet functionality is currently disabled.";
-    console.log(message);
-    return { success: false, error: message };
 }
