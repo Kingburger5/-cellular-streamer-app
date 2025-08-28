@@ -7,22 +7,11 @@ let adminStorage: Storage;
 
 try {
     if (!getApps().length) {
-        const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
-        const bucketName = "cellular-data-streamer.appspot.com";
-
-        if (serviceAccountKey) {
-            const serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
-            adminApp = initializeApp({
-                credential: cert(serviceAccount),
-                storageBucket: bucketName,
-            });
-        } else {
-            // This fallback is for local development or environments without the secret set.
-            // It uses Application Default Credentials.
-            adminApp = initializeApp({
-                storageBucket: bucketName,
-            });
-        }
+        // When deployed to App Hosting, the SDK will automatically use the
+        // default service account credentials.
+        adminApp = initializeApp({
+            storageBucket: "cellular-data-streamer.firebasestorage.app",
+        });
     } else {
         adminApp = getApps()[0];
     }
@@ -35,7 +24,6 @@ try {
         throw e; // Re-throw other errors
     }
 }
-
 
 adminStorage = getStorage(adminApp);
 
