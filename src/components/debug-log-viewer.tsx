@@ -12,7 +12,7 @@ export function DebugLogViewer() {
         // This URL is constructed based on standard Google Cloud Logging for App Hosting.
         // It assumes the project ID and backend ID from the firebase.json and apphosting.yaml files.
         const projectID = "cellular-data-streamer";
-        const backendID = "cellularstreamer";
+        const backendID = "my-app";
         const consoleUrl = `https://console.cloud.google.com/logs/viewer?project=${projectID}&resource=apphosting.googleapis.com%2FBackend%2F${backendID}`;
         window.open(consoleUrl, '_blank');
     }
