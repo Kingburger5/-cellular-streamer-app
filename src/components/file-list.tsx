@@ -11,7 +11,8 @@ import {
   SidebarMenuAction,
   SidebarTrigger,
   SidebarContent,
-  SidebarFooter
+  SidebarFooter,
+  SidebarMenuSkeleton
 } from "@/components/ui/sidebar";
 import { Antenna, Trash2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
@@ -35,9 +36,10 @@ interface FileListProps {
   onSelectFile: (name: string) => void;
   onUploadComplete: () => void;
   onDeleteFile: (name: string) => void;
+  isLoading: boolean;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, onDeleteFile }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, onDeleteFile, isLoading }: FileListProps) {
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
@@ -57,7 +59,14 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, 
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu className="flex-grow">
-          {files.map((file) => (
+          {isLoading && (
+            <>
+                <SidebarMenuSkeleton showIcon={true}/>
+                <SidebarMenuSkeleton showIcon={true}/>
+                <SidebarMenuSkeleton showIcon={true}/>
+            </>
+          )}
+          {!isLoading && files.map((file) => (
             <SidebarMenuItem key={file.name}>
               <SidebarMenuButton
                 onClick={() => onSelectFile(file.name)}
@@ -100,7 +109,7 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, 
 
             </SidebarMenuItem>
           ))}
-          {files.length === 0 && (
+          {!isLoading && files.length === 0 && (
             <div className="text-center text-muted-foreground p-4">
                 No files in storage. Upload a file to begin.
             </div>

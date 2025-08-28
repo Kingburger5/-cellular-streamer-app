@@ -1,15 +1,27 @@
 
-import { initializeApp, getApps, App, cert } from "firebase-admin/app";
+import { initializeApp, getApps, App, cert, ServiceAccount } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 
 let adminApp: App;
 let adminStorage: Storage;
 
-// When running in a Google Cloud environment like App Hosting,
-// the SDK will automatically use the service account of the environment.
-// No credentials need to be passed explicitly.
+const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
+const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+
 if (!getApps().length) {
-    adminApp = initializeApp();
+    if (serviceAccountKey) {
+        // Running in a deployed environment with the secret set
+        const serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
+        adminApp = initializeApp({
+            credential: cert(serviceAccount),
+            storageBucket: bucketName
+        });
+    } else {
+        // Running locally or in an environment with default credentials
+        adminApp = initializeApp({
+             storageBucket: bucketName
+        });
+    }
 } else {
     adminApp = getApps()[0];
 }
