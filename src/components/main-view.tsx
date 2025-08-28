@@ -50,8 +50,20 @@ export function MainView({ initialFiles }: MainViewProps) {
         setFiles(updatedFiles);
         // If no file is selected, or the selected file was deleted, select the first one.
         if ((!selectedFileName && updatedFiles.length > 0) || (selectedFileName && !updatedFiles.some(f => f.name === selectedFileName))) {
-          setSelectedFileName(updatedFiles[0]?.name || null);
+          const newFileToSelect = updatedFiles[0]?.name || null;
+          setSelectedFileName(newFileToSelect);
+          if (!newFileToSelect) {
+            // If there are no files left, clear the display
+            setActiveFileContent(null);
+            setError(null);
+          }
+        } else if (updatedFiles.length === 0) {
+            // All files were deleted
+            setSelectedFileName(null);
+            setActiveFileContent(null);
+            setError(null);
         }
+
       } catch (err: any) {
         setFileListError(err.message || "An unknown error occurred while fetching files.");
       }
@@ -68,16 +80,22 @@ export function MainView({ initialFiles }: MainViewProps) {
   useEffect(() => {
     if (selectedFileName) {
       startTransition(async () => {
-        const content = await processFileAction(selectedFileName);
-        if (content) {
-          setActiveFileContent(content);
+        const result = await processFileAction(selectedFileName);
+        if (result && 'error' in result) {
+            setError(result.error);
+            setActiveFileContent(null);
+        } else if (result) {
+            setActiveFileContent(result);
+            setError(null);
         } else {
-          setError(`Failed to process file: ${selectedFileName}`);
+            setError(`Failed to process file: ${selectedFileName}. Result was null.`);
+            setActiveFileContent(null);
         }
       });
     } else {
         // If no file is selected, clear the content.
         setActiveFileContent(null);
+        setError(null);
     }
   }, [selectedFileName]);
 
@@ -95,10 +113,6 @@ export function MainView({ initialFiles }: MainViewProps) {
                 description: `${name} has been deleted from storage.`,
             });
             await refreshFileList();
-            // If the deleted file was the selected one, clear the selection.
-            if (selectedFileName === name) {
-                setSelectedFileName(null);
-            }
         } else {
              toast({
                 title: "Deletion Failed",
@@ -107,7 +121,7 @@ export function MainView({ initialFiles }: MainViewProps) {
             });
         }
      });
-  }, [toast, refreshFileList, selectedFileName]);
+  }, [toast, refreshFileList]);
 
   return (
     <SidebarProvider>

@@ -3,7 +3,6 @@
 
 import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { WaveFileViewer } from "./wave-file-viewer";
 import { Badge } from "./ui/badge";
 import { ServerCrash, FileSearch, Loader, Download } from "lucide-react";
 import { Button } from "./ui/button";
@@ -57,7 +56,8 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
       <Card className="h-full flex flex-col items-center justify-center p-4 text-center">
         <ServerCrash className="w-16 h-16 text-destructive mb-4" />
         <h2 className="text-2xl font-headline font-semibold mb-2">Error Processing File</h2>
-        <p className="text-muted-foreground">{error}</p>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <p className="text-sm text-muted-foreground">Please check the server logs for more details.</p>
       </Card>
     );
   }
@@ -85,6 +85,8 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
       defaultTab = "visualization";
   } else if (!hasRawMetadata && audioSrc) {
       defaultTab = "audio";
+  } else if (!hasData && hasRawMetadata) {
+      defaultTab = "metadata";
   }
 
 

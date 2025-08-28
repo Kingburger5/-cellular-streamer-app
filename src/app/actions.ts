@@ -41,7 +41,7 @@ function findReadableStrings(buffer: Buffer): string | null {
     const guanoIndex = buffer.indexOf(guanoKeyword);
 
     if (guanoIndex === -1) {
-        console.log("GUANO keyword not found in buffer.");
+        console.log("DEBUG: GUANO keyword not found in buffer.");
         return null;
     }
 
@@ -49,7 +49,7 @@ function findReadableStrings(buffer: Buffer): string | null {
     // It's a 32-bit little-endian unsigned integer.
     const lengthOffset = guanoIndex - 4;
     if (lengthOffset < 0) {
-        console.log("Not enough space for length before GUANO keyword.");
+        console.log("DEBUG: Not enough space for length before GUANO keyword.");
         return null;
     }
     
@@ -61,16 +61,17 @@ function findReadableStrings(buffer: Buffer): string | null {
         const metadataEnd = metadataStart + chunkLength;
         
         if (metadataEnd > buffer.length) {
-            console.log("Metadata chunk length exceeds buffer size.");
+            console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size (${buffer.length}).`);
             return null;
         }
         
         // Extract the metadata chunk as a string.
         const metadata = buffer.toString('utf-8', metadataStart, metadataEnd);
+        console.log(`DEBUG: Successfully extracted metadata chunk of length ${chunkLength}.`);
         return metadata.trim();
 
     } catch (e) {
-        console.error("Error reading metadata length:", e);
+        console.error("DEBUG: Error reading metadata length from buffer:", e);
         return null;
     }
 }
@@ -78,12 +79,18 @@ function findReadableStrings(buffer: Buffer): string | null {
 
 export async function processFileAction(
   filename: string,
-): Promise<FileContent | null> {
+): Promise<FileContent | { error: string }> {
+    let fileBuffer: Buffer;
     try {
         const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
-        const [fileBuffer] = await file.download();
+        [fileBuffer] = await file.download();
+    } catch (error: any) {
+        console.error(`[SERVER_ERROR] Step 1 Failed: Could not download file '${filename}' from Firebase Storage.`, error);
+        return { error: `Failed to download file from storage. See server logs for details. Code: ${error.code}` };
+    }
 
+    try {
         const buffer = Buffer.from(fileBuffer);
         const extension = filename.split('.').pop()?.toLowerCase() || '';
 
@@ -92,13 +99,14 @@ export async function processFileAction(
         let rawMetadata: string | null = null;
         let extractedData: DataPoint[] | null = null;
 
-        // Broaden binary check for common audio/compressed formats
         if (['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension)) {
             isBinary = true;
             content = `data:application/octet-stream;base64,${buffer.toString('base64')}`;
             rawMetadata = findReadableStrings(buffer);
+            if (!rawMetadata) {
+                 console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file '${filename}'.`);
+            }
         } else {
-            // Attempt to decode as UTF-8, fall back to raw if it fails
             try {
                 content = buffer.toString("utf-8");
             } catch (e) {
@@ -109,17 +117,26 @@ export async function processFileAction(
         }
         
         if (rawMetadata) {
-            const aiResult = await extractData({ fileContent: rawMetadata, filename: filename });
-             if (aiResult && aiResult.data.length > 0) {
-                extractedData = aiResult.data;
+            try {
+                console.log(`[SERVER_INFO] Step 3 Started: Calling AI to extract data from '${filename}'.`);
+                const aiResult = await extractData({ fileContent: rawMetadata, filename: filename });
+                if (aiResult && aiResult.data.length > 0) {
+                    extractedData = aiResult.data;
+                    console.log(`[SERVER_INFO] Step 3 Success: AI extracted ${aiResult.data.length} data point(s).`);
+                } else {
+                    console.log(`[SERVER_INFO] Step 3 Incomplete: AI returned no data points from '${filename}'.`);
+                }
+            } catch (aiError) {
+                 console.error(`[SERVER_ERROR] Step 3 Failed: AI data extraction failed for '${filename}'.`, aiError);
+                 // Still return the file content, just without the extracted data
             }
         }
 
         return { content, extension, name: filename, isBinary, rawMetadata, extractedData };
 
     } catch(error) {
-        console.error(`Error processing file ${filename}:`, error);
-        return null;
+        console.error(`[SERVER_ERROR] Generic processing error for file ${filename}:`, error);
+        return { error: 'An unexpected error occurred during file processing. Check server logs.'};
     }
 }
 
