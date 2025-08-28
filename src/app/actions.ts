@@ -14,7 +14,7 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
              throw new Error("Firebase Storage bucket name is not configured in environment variables.");
         }
         const bucket = adminStorage.bucket(bucketName);
-        const [files] = await bucket.getFiles({ prefix: 'uploads/' });
+        const [files] = await bucket.getFiles();
 
         const fileDetails = await Promise.all(
             files.map(async (file) => {
@@ -23,7 +23,7 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
                 }
                 const [metadata] = await file.getMetadata();
                 return {
-                    name: metadata.name.replace('uploads/', ''),
+                    name: metadata.name,
                     size: Number(metadata.size),
                     uploadDate: new Date(metadata.timeCreated),
                 };
@@ -71,7 +71,7 @@ export async function processFileAction(
              throw new Error("Firebase Storage bucket name is not configured in environment variables.");
         }
         const bucket = adminStorage.bucket(bucketName);
-        const file = bucket.file(`uploads/${filename}`);
+        const file = bucket.file(filename);
         const [fileBuffer] = await file.download();
 
         const buffer = Buffer.from(fileBuffer);
@@ -122,7 +122,7 @@ export async function deleteFileAction(
         throw new Error("Firebase Storage bucket name is not configured in environment variables.");
     }
     const bucket = adminStorage.bucket(bucketName);
-    await bucket.file(`uploads/${filename}`).delete();
+    await bucket.file(filename).delete();
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "An unknown error occurred.";
@@ -138,7 +138,7 @@ export async function getDownloadUrlAction(filename: string): Promise<{ url: str
             throw new Error("Firebase Storage bucket name is not configured in environment variables.");
         }
         const bucket = adminStorage.bucket(bucketName);
-        const file = bucket.file(`uploads/${filename}`);
+        const file = bucket.file(filename);
         const [url] = await file.getSignedUrl({
             action: 'read',
             expires: Date.now() + 15 * 60 * 1000, // 15 minutes

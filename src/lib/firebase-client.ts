@@ -41,7 +41,7 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
   try {
     await ensureSignIn(); // Make sure we are authenticated before making a request
     
-    const listRef = ref(storage, 'uploads');
+    const listRef = ref(storage, '/');
     const res = await listAll(listRef);
 
     const fileDetails = await Promise.all(
