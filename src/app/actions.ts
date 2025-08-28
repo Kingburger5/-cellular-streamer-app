@@ -6,13 +6,11 @@ import { extractData } from "@/ai/flows/extract-data-flow";
 import { appendToSheet } from "@/ai/flows/append-to-sheet-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
-// This is the correct, hardcoded bucket name for your project.
-const BUCKET_NAME = 'cellular-data-streamer.appspot.com';
-
 // Get all files from Firebase Storage
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
-        const bucket = adminStorage.bucket(BUCKET_NAME);
+        // The bucket should be automatically inferred from the initialized app.
+        const bucket = adminStorage.bucket();
         const [files] = await bucket.getFiles({ prefix: 'uploads/' });
 
         const fileDetails = await Promise.all(
@@ -50,6 +48,7 @@ function findReadableStrings(buffer: Buffer): string | null {
     let endIndex = guanoIndex + guanoKeyword.length;
     while(endIndex < buffer.length) {
         const charCode = buffer[endIndex];
+        // Allow printable ASCII characters, plus newline and carriage return
         if ( (charCode < 32 || charCode > 126) && charCode !== 10 && charCode !== 13) {
             break;
         }
@@ -64,7 +63,7 @@ export async function processFileAction(
   filename: string,
 ): Promise<FileContent | null> {
     try {
-        const bucket = adminStorage.bucket(BUCKET_NAME);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
         const [fileBuffer] = await file.download();
 
@@ -76,12 +75,19 @@ export async function processFileAction(
         let rawMetadata: string | null = null;
         let extractedData: DataPoint[] | null = null;
 
-        if (['wav', 'mp3', 'ogg'].includes(extension)) {
+        // Broaden binary check for common audio/compressed formats
+        if (['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension)) {
             isBinary = true;
-            content = `data:audio/wav;base64,${buffer.toString('base64')}`;
+            content = `data:application/octet-stream;base64,${buffer.toString('base64')}`;
             rawMetadata = findReadableStrings(buffer);
         } else {
-            content = buffer.toString("utf-8");
+            // Attempt to decode as UTF-8, fall back to raw if it fails
+            try {
+                content = buffer.toString("utf-8");
+            } catch (e) {
+                isBinary = true;
+                content = `data:application/octet-stream;base64,${buffer.toString('base64')}`;
+            }
             rawMetadata = content;
         }
         
@@ -104,7 +110,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucket = adminStorage.bucket(BUCKET_NAME);
+    const bucket = adminStorage.bucket();
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
@@ -116,7 +122,7 @@ export async function deleteFileAction(
 
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
-        const bucket = adminStorage.bucket(BUCKET_NAME);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
         const [url] = await file.getSignedUrl({
             action: 'read',

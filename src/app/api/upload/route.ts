@@ -4,9 +4,6 @@ import { format } from 'date-fns';
 import { google } from 'googleapis';
 import { adminStorage } from "@/lib/firebase-admin";
 
-// This is the correct, hardcoded bucket name for your project.
-const BUCKET_NAME = 'cellular-data-streamer.appspot.com';
-
 async function logRequestToSheet(request: NextRequest) {
     const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
     const LOG_SHEET_NAME = "ConnectionLog";
@@ -69,8 +66,9 @@ export async function POST(request: NextRequest) {
     await logRequestToSheet(request);
 
     try {
-        if (!request.body) {
-            return NextResponse.json({ error: "Empty request body." }, { status: 400 });
+        const contentTypeHeader = request.headers.get('content-type');
+        if (!contentTypeHeader) {
+             return NextResponse.json({ error: "Missing Content-Type header." }, { status: 400 });
         }
         
         const fileBuffer = await request.arrayBuffer();
@@ -79,14 +77,14 @@ export async function POST(request: NextRequest) {
              return NextResponse.json({ error: "Empty file content." }, { status: 400 });
         }
         
-        const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}.wav`;
+        const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
         
-        const bucket = adminStorage.bucket(BUCKET_NAME);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
 
         await file.save(Buffer.from(fileBuffer), {
             metadata: {
-                contentType: request.headers.get('content-type') || 'application/octet-stream',
+                contentType: contentTypeHeader,
             }
         });
         
