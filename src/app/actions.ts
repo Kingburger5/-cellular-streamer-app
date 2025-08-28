@@ -9,11 +9,7 @@ import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 // This function is no longer called by the main view but is kept for potential future server-side needs.
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
-        const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-        if (!bucketName) {
-             throw new Error("Firebase Storage bucket name is not configured in environment variables.");
-        }
-        const bucket = adminStorage.bucket(bucketName);
+        const bucket = adminStorage.bucket();
         const [files] = await bucket.getFiles();
 
         const fileDetails = await Promise.all(
@@ -66,11 +62,7 @@ export async function processFileAction(
   filename: string,
 ): Promise<FileContent | null> {
     try {
-        const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-        if (!bucketName) {
-             throw new Error("Firebase Storage bucket name is not configured in environment variables.");
-        }
-        const bucket = adminStorage.bucket(bucketName);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(filename);
         const [fileBuffer] = await file.download();
 
@@ -117,11 +109,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-    if (!bucketName) {
-        throw new Error("Firebase Storage bucket name is not configured in environment variables.");
-    }
-    const bucket = adminStorage.bucket(bucketName);
+    const bucket = adminStorage.bucket();
     await bucket.file(filename).delete();
     return { success: true };
   } catch (error) {
@@ -133,11 +121,7 @@ export async function deleteFileAction(
 
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
-        const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-        if (!bucketName) {
-            throw new Error("Firebase Storage bucket name is not configured in environment variables.");
-        }
-        const bucket = adminStorage.bucket(bucketName);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(filename);
         const [url] = await file.getSignedUrl({
             action: 'read',

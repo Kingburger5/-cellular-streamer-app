@@ -5,26 +5,37 @@ import { getStorage, Storage } from "firebase-admin/storage";
 let adminApp: App;
 let adminStorage: Storage;
 
-const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
-const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+try {
+    if (!getApps().length) {
+        const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
+        const bucketName = "cellular-data-streamer.appspot.com";
 
-if (!getApps().length) {
-    if (serviceAccountKey) {
-        // Running in a deployed environment with the secret set
-        const serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
-        adminApp = initializeApp({
-            credential: cert(serviceAccount),
-            storageBucket: bucketName
-        });
+        if (serviceAccountKey) {
+            const serviceAccount = JSON.parse(serviceAccountKey) as ServiceAccount;
+            adminApp = initializeApp({
+                credential: cert(serviceAccount),
+                storageBucket: bucketName,
+            });
+        } else {
+            // This fallback is for local development or environments without the secret set.
+            // It uses Application Default Credentials.
+            adminApp = initializeApp({
+                storageBucket: bucketName,
+            });
+        }
     } else {
-        // Running locally or in an environment with default credentials
-        adminApp = initializeApp({
-             storageBucket: bucketName
-        });
+        adminApp = getApps()[0];
     }
-} else {
-    adminApp = getApps()[0];
+} catch (e: any) {
+    console.error("Firebase Admin SDK initialization failed:", e);
+    // If the app is already initialized, get the existing instance. This can happen during hot-reloads.
+    if (e.code === 'app/duplicate-app' && getApps().length > 0) {
+        adminApp = getApps()[0];
+    } else {
+        throw e; // Re-throw other errors
+    }
 }
+
 
 adminStorage = getStorage(adminApp);
 

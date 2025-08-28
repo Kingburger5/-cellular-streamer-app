@@ -79,11 +79,7 @@ export async function POST(request: NextRequest) {
         
         const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
         
-        const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-        if (!bucketName) {
-            throw new Error("Firebase Storage bucket name is not configured in environment variables.");
-        }
-        const bucket = adminStorage.bucket(bucketName);
+        const bucket = adminStorage.bucket();
         const file = bucket.file(filename);
 
         await file.save(Buffer.from(fileBuffer), {
