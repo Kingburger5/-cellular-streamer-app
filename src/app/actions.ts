@@ -10,7 +10,7 @@ import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
         const bucket = adminStorage.bucket();
-        const [files] = await bucket.getFiles();
+        const [files] = await bucket.getFiles({ prefix: "uploads/"});
 
         const fileDetails = await Promise.all(
             files.map(async (file) => {
@@ -19,7 +19,7 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
                 }
                 const [metadata] = await file.getMetadata();
                 return {
-                    name: metadata.name,
+                    name: metadata.name.replace('uploads/', ''), // Return just the filename
                     size: Number(metadata.size),
                     uploadDate: new Date(metadata.timeCreated),
                 };
@@ -63,7 +63,7 @@ export async function processFileAction(
 ): Promise<FileContent | null> {
     try {
         const bucket = adminStorage.bucket();
-        const file = bucket.file(filename);
+        const file = bucket.file(`uploads/${filename}`);
         const [fileBuffer] = await file.download();
 
         const buffer = Buffer.from(fileBuffer);
@@ -110,7 +110,7 @@ export async function deleteFileAction(
 ): Promise<{ success: true } | { error: string }> {
   try {
     const bucket = adminStorage.bucket();
-    await bucket.file(filename).delete();
+    await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "An unknown error occurred.";
@@ -122,7 +122,7 @@ export async function deleteFileAction(
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
         const bucket = adminStorage.bucket();
-        const file = bucket.file(filename);
+        const file = bucket.file(`uploads/${filename}`);
         const [url] = await file.getSignedUrl({
             action: 'read',
             expires: Date.now() + 15 * 60 * 1000, // 15 minutes

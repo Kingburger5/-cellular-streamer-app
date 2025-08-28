@@ -59,7 +59,7 @@ async function logRequestToSheet(request: NextRequest) {
 
 /**
  * Handles file uploads from transmission modules.
- * It saves the file to Firebase Storage.
+ * It saves the file to Firebase Storage inside the 'uploads' folder.
  */
 export async function POST(request: NextRequest) {
     
@@ -77,10 +77,11 @@ export async function POST(request: NextRequest) {
              return NextResponse.json({ error: "Empty file content." }, { status: 400 });
         }
         
-        const filename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
+        const originalFilename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
+        const filePath = `uploads/${originalFilename}`;
         
         const bucket = adminStorage.bucket();
-        const file = bucket.file(filename);
+        const file = bucket.file(filePath);
 
         await file.save(Buffer.from(fileBuffer), {
             metadata: {
@@ -88,11 +89,11 @@ export async function POST(request: NextRequest) {
             }
         });
         
-        console.log(`[SERVER] Successfully uploaded to Firebase Storage: ${filename}`);
+        console.log(`[SERVER] Successfully uploaded to Firebase Storage: ${filePath}`);
         
         return NextResponse.json({
             message: "File uploaded successfully to Firebase Storage.",
-            filename: filename,
+            filename: originalFilename,
         }, { status: 200 });
 
     } catch (error: any) {

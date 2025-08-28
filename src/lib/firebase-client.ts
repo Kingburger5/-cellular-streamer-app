@@ -42,14 +42,16 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
   try {
     await ensureSignIn(); // Make sure we are authenticated before making a request
     
-    const listRef = ref(storage, '/');
+    const listRef = ref(storage, 'uploads');
     const res = await listAll(listRef);
 
     const fileDetails = await Promise.all(
       res.items.map(async (itemRef) => {
         const metadata = await getMetadata(itemRef);
+        // We need to return just the filename, not the full path.
+        const name = itemRef.name;
         return {
-          name: metadata.name,
+          name: name,
           size: metadata.size,
           uploadDate: new Date(metadata.timeCreated),
         };
@@ -60,8 +62,8 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
   } catch (error: any) {
     console.error("[Client] Error fetching files:", error);
     // Provide a more user-friendly error message
-    if (error.code === 'storage/unauthorized') {
-      throw new Error('Permission denied. Please check your Storage Security Rules in the Firebase Console to ensure read access is allowed for authenticated users.');
+    if (error.code === 'storage/unauthorized' || error.code === 'storage/object-not-found') {
+      throw new Error('Permission denied. Please check your Storage Security Rules in the Firebase Console to ensure read access is allowed for the `uploads` folder.');
     }
     throw new Error("Could not fetch files from storage.");
   }
