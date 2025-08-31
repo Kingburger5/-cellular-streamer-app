@@ -159,7 +159,7 @@ export async function deleteFileAction(
   } catch (error) {
     const message = error instanceof Error ? error.message : "An unknown error occurred.";
     console.error(`Failed to delete ${filename}:`, error);
-    return { error: message };
+    return { error: `Server-side delete failed: ${message}. Check logs and IAM permissions.` };
   }
 }
 
@@ -175,7 +175,7 @@ export async function getDownloadUrlAction(filename: string): Promise<{ url: str
     } catch (error) {
         const message = error instanceof Error ? error.message : "An unknown error occurred.";
         console.error(`Failed to get download URL for ${filename}:`, error);
-        return { error: message };
+        return { error: `Server-side download link generation failed: ${message}. Check logs and IAM permissions.` };
     }
 }
 
