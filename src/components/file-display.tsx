@@ -111,7 +111,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
           <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
               <TabsList className="shrink-0">
                   <TabsTrigger value="summary" disabled={!hasRawMetadata}>AI Summary</TabsTrigger>
-                  <TabsTrigger value="visualization" disabled={!hasRawMetadata}>Data Visualization</TabsTrigger>
+                  <TabsTrigger value="visualization" disabled={!hasRawadata}>Data Visualization</TabsTrigger>
                   <TabsTrigger value="audio" disabled={!audioSrc}>Audio Playback</TabsTrigger>
                   <TabsTrigger value="metadata" disabled={!hasRawMetadata}>Raw Metadata</TabsTrigger>
               </TabsList>
