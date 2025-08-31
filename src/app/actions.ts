@@ -165,16 +165,22 @@ export async function deleteFileAction(
 
 export async function getDownloadUrlAction(filename: string): Promise<{ url: string } | { error: string }> {
     try {
+        console.log(`[SERVER_INFO] Attempting to get signed URL for '${filename}'.`);
         const bucket = adminStorage.bucket();
         const file = bucket.file(`uploads/${filename}`);
         const [url] = await file.getSignedUrl({
             action: 'read',
             expires: Date.now() + 15 * 60 * 1000, // 15 minutes
         });
+        console.log(`[SERVER_INFO] Successfully generated signed URL for '${filename}'.`);
         return { url };
-    } catch (error) {
+    } catch (error: any) {
         const message = error instanceof Error ? error.message : "An unknown error occurred.";
-        console.error(`Failed to get download URL for ${filename}:`, error);
+        console.error(`[SERVER_ERROR] Failed to get download URL for ${filename}:`, error);
+        // Provide a more specific error message based on the likely cause.
+        if (message.includes("client_email")) {
+             return { error: `Server-side authentication failed: Could not find credentials to sign the URL. Please check server logs and IAM permissions for the App Hosting service account. Full error: ${message}` };
+        }
         return { error: `Server-side download link generation failed: ${message}. Check logs and IAM permissions.` };
     }
 }
