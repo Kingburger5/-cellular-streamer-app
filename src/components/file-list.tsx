@@ -14,7 +14,7 @@ import {
   SidebarFooter,
   SidebarMenuSkeleton
 } from "@/components/ui/sidebar";
-import { Antenna, Trash2 } from "lucide-react";
+import { Antenna, Trash2, Download } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import { FileUploader } from "./file-uploader";
 import {
@@ -36,14 +36,20 @@ interface FileListProps {
   onSelectFile: (name: string) => void;
   onUploadComplete: () => void;
   onDeleteFile: (name: string) => void;
+  onDownloadFile: (name: string) => void;
   isLoading: boolean;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, onDeleteFile, isLoading }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, onDeleteFile, onDownloadFile, isLoading }: FileListProps) {
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
     onDeleteFile(filename);
+  }
+
+  const handleDownload = (e: React.MouseEvent, filename: string) => {
+    e.stopPropagation();
+    onDownloadFile(filename);
   }
 
   return (
@@ -83,29 +89,34 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, 
                 </div>
               </SidebarMenuButton>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                   <SidebarMenuAction showOnHover>
-                      <Trash2 />
-                   </SidebarMenuAction>
-                </AlertDialogTrigger>
-                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the file
-                            <strong className="mx-1">{file.name}</strong>
-                             from Firebase Storage.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={(e) => handleDelete(e, file.name)} className="bg-destructive hover:bg-destructive/90">
-                            Delete
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <div className="flex items-center">
+                 <SidebarMenuAction showOnHover onClick={(e) => handleDownload(e, file.name)}>
+                    <Download />
+                 </SidebarMenuAction>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                       <SidebarMenuAction showOnHover>
+                          <Trash2 />
+                       </SidebarMenuAction>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the file
+                                <strong className="mx-1">{file.name}</strong>
+                                 from Firebase Storage.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={(e) => handleDelete(e, file.name)} className="bg-destructive hover:bg-destructive/90">
+                                Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+              </div>
 
             </SidebarMenuItem>
           ))}

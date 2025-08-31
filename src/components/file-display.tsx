@@ -4,10 +4,7 @@
 import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "./ui/badge";
-import { ServerCrash, FileSearch, Loader, Download } from "lucide-react";
-import { Button } from "./ui/button";
-import { getDownloadUrlAction } from "@/app/actions";
-import { useToast } from "@/hooks/use-toast";
+import { ServerCrash, FileSearch, Loader } from "lucide-react";
 import { DataVisualizer } from "./data-visualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SummaryViewer } from "./summary-viewer";
@@ -19,27 +16,6 @@ interface FileDisplayProps {
 }
 
 export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps) {
-  const { toast } = useToast();
-
-  const handleDownload = async () => {
-    if (!fileContent) return;
-
-    toast({ title: "Preparing download..." });
-    const result = await getDownloadUrlAction(fileContent.name);
-    if ('url' in result) {
-      // Create a temporary link to trigger the download
-      const link = document.createElement('a');
-      link.href = result.url;
-      link.target = "_blank"; // Open in new tab to avoid navigation issues
-      link.download = fileContent.name; // This attribute is not always respected but good to have
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast({ title: "Download started" });
-    } else {
-      toast({ title: "Download Failed", description: result.error, variant: "destructive" });
-    }
-  };
 
   if (isLoading) {
     return (
@@ -101,10 +77,6 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
                 </CardTitle>
                 <CardDescription>File from persistent storage. Select a tab to view details.</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={handleDownload} className="ml-4 shrink-0">
-                <Download className="mr-2 h-4 w-4" />
-                Download
-            </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-grow h-0">
