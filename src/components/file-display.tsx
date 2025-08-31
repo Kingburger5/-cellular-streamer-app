@@ -94,15 +94,15 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
     <Card className="h-full flex flex-col">
       <CardHeader>
         <div className="flex justify-between items-start">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
                 <CardTitle className="font-headline flex items-center gap-2">
                   <span className="truncate">{fileContent.name}</span>
                   <Badge variant="outline">{fileContent.extension}</Badge>
                 </CardTitle>
                 <CardDescription>File from persistent storage. Select a tab to view details.</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={handleDownload}>
-                <Download className="mr-2" />
+            <Button variant="outline" size="sm" onClick={handleDownload} className="ml-4 shrink-0">
+                <Download className="mr-2 h-4 w-4" />
                 Download
             </Button>
         </div>
@@ -111,7 +111,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
           <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
               <TabsList className="shrink-0">
                   <TabsTrigger value="summary" disabled={!hasRawMetadata}>AI Summary</TabsTrigger>
-                  <TabsTrigger value="visualization" disabled={!hasRawadata}>Data Visualization</TabsTrigger>
+                  <TabsTrigger value="visualization" disabled={!hasRawMetadata}>Data Visualization</TabsTrigger>
                   <TabsTrigger value="audio" disabled={!audioSrc}>Audio Playback</TabsTrigger>
                   <TabsTrigger value="metadata" disabled={!hasRawMetadata}>Raw Metadata</TabsTrigger>
               </TabsList>
