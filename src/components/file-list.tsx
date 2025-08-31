@@ -90,7 +90,7 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, 
               </SidebarMenuButton>
 
               <div className="flex items-center">
-                 <SidebarMenuAction showOnHover onClick={(e) => handleDownload(e, file.name)}>
+                 <SidebarMenuAction showOnHover onClick={(e) => handleDownload(e, file.name)} className="mr-1">
                     <Download />
                  </SidebarMenuAction>
                   <AlertDialog>
