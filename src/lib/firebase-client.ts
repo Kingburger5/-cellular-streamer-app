@@ -25,26 +25,41 @@ const storage = getStorage(app);
 const auth = getAuth(app);
 
 // Helper function to ensure user is signed in
-let authReady: Promise<User>;
+let authReady: Promise<User | null>;
+let authResolved = false;
 
-const ensureSignIn = (): Promise<User> => {
+const ensureSignIn = (): Promise<User | null> => {
   if (!authReady) {
     authReady = new Promise((resolve, reject) => {
-      onAuthStateChanged(auth, async (user) => {
+      // This listener will be called whenever the auth state changes.
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
-          resolve(user);
-        } else {
+          if (!authResolved) {
+            authResolved = true;
+            resolve(user);
+          }
+          unsubscribe(); // Stop listening after we have a user.
+        } else if (!auth.currentUser && !authResolved) {
+          // If there's no user and we haven't already tried, sign in.
           try {
-            const userCredential = await signInAnonymously(auth);
-            resolve(userCredential.user);
+            await signInAnonymously(auth);
+            // The onAuthStateChanged listener will be triggered again with the new user.
           } catch (error) {
             console.error("Anonymous sign-in failed:", error);
-            reject(error);
+            if (!authResolved) {
+              authResolved = true;
+              reject(error);
+            }
+            unsubscribe();
           }
         }
       }, (error) => {
           console.error("Auth state change error:", error);
-          reject(error);
+          if (!authResolved) {
+            authResolved = true;
+            reject(error);
+          }
+          unsubscribe();
       });
     });
   }
