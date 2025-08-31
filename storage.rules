@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow read access to the uploads folder for any signed-in user.
+    // This is required for the client-side to be able to list files.
+    match /uploads/{allPaths=**} {
+      allow read; // Temporarily allow all reads for debugging
+      allow write: if request.auth != null; // For client-side uploads if needed
+    }
+  }
+}
