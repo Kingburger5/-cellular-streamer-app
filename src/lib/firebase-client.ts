@@ -25,18 +25,32 @@ const storage = getStorage(app);
 const auth = getAuth(app);
 
 // Helper function to ensure user is signed in
-let currentUser: User | null = null;
-onAuthStateChanged(auth, (user) => {
-    currentUser = user;
-});
+let authReady: Promise<User>;
 
-const ensureSignIn = async (): Promise<User> => {
-    if (currentUser) {
-        return currentUser;
-    }
-    const userCredential = await signInAnonymously(auth);
-    return userCredential.user;
-}
+const ensureSignIn = (): Promise<User> => {
+  if (!authReady) {
+    authReady = new Promise((resolve, reject) => {
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          resolve(user);
+        } else {
+          try {
+            const userCredential = await signInAnonymously(auth);
+            resolve(userCredential.user);
+          } catch (error) {
+            console.error("Anonymous sign-in failed:", error);
+            reject(error);
+          }
+        }
+      }, (error) => {
+          console.error("Auth state change error:", error);
+          reject(error);
+      });
+    });
+  }
+  return authReady;
+};
+
 
 export async function getClientFiles(): Promise<UploadedFile[]> {
   try {
@@ -63,7 +77,7 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
     console.error("[Client] Error fetching files:", error);
     // Provide a more user-friendly error message
     if (error.code === 'storage/unauthorized' || error.code === 'storage/object-not-found') {
-      throw new Error('Permission denied. Please check your Storage Security Rules in the Firebase Console to ensure read access is allowed for the `uploads` folder.');
+      throw new Error('Permission denied. Please check your Storage Security Rules in the Firebase Console to ensure read access is allowed for authenticated users in the `uploads` folder.');
     }
     throw new Error("Could not fetch files from storage.");
   }
