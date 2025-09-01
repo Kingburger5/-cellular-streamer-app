@@ -27,18 +27,18 @@ function initializeFirebaseAdmin() {
         
         let serviceAccount: ServiceAccount;
         try {
-            // First, try to parse the string directly.
+            // First, try to parse the string directly. This should work in most cases.
             serviceAccount = JSON.parse(serviceAccountString);
         } catch (e) {
-            // If parsing fails, it might be due to extra quotes.
-            // Try to remove them and parse again.
-            console.log("[SERVER_INFO] Direct JSON parsing failed. Attempting to clean string...");
-            const cleanedString = serviceAccountString.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"');
+            // If parsing fails, it might be due to extra quotes or escaping issues.
+            // This is a common problem in some cloud environments.
+            console.log("[SERVER_INFO] Direct JSON parsing failed. Attempting to clean string before parsing again.");
+            const cleanedString = serviceAccountString.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\n/g, '');
             try {
                  serviceAccount = JSON.parse(cleanedString);
             } catch (finalError) {
-                 console.error("[CRITICAL] Final JSON parsing attempt failed after cleaning.");
-                 // Throw the original, more informative error.
+                 console.error("[CRITICAL] Final JSON parsing attempt failed after cleaning the string.");
+                 // Throw the original, more informative error to avoid masking the root cause.
                  throw e;
             }
         }
