@@ -17,7 +17,7 @@ try {
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
-            storageBucket: `${serviceAccount.projectId}.appspot.com`
+            storageBucket: `${serviceAccount.project_id}.appspot.com`
         });
 
     } else {
