@@ -25,9 +25,23 @@ function initializeFirebaseAdmin() {
             throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set. This is required for server-side operations.");
         }
         
-        // Let the SDK handle the parsing. It can take a string path or an object.
-        // By passing the raw string to cert(), we avoid our own parsing issues.
-        const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
+        let serviceAccount: ServiceAccount;
+        try {
+            // First, try to parse the string directly.
+            serviceAccount = JSON.parse(serviceAccountString);
+        } catch (e) {
+            // If parsing fails, it might be due to extra quotes.
+            // Try to remove them and parse again.
+            console.log("[SERVER_INFO] Direct JSON parsing failed. Attempting to clean string...");
+            const cleanedString = serviceAccountString.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"');
+            try {
+                 serviceAccount = JSON.parse(cleanedString);
+            } catch (finalError) {
+                 console.error("[CRITICAL] Final JSON parsing attempt failed after cleaning.");
+                 // Throw the original, more informative error.
+                 throw e;
+            }
+        }
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
