@@ -54,12 +54,17 @@ export function MainView({ initialFiles }: MainViewProps) {
     setActiveFileContent(null); // Clear previous content immediately
   }, [selectedFileName]);
 
-  const refreshFileList = useCallback(async () => {
+  const refreshFileList = useCallback(async (showToast = false) => {
     startFileListTransition(async () => {
       setFileListError(null);
       try {
         const updatedFiles = await getClientFiles();
         setFiles(updatedFiles);
+
+        if (showToast) {
+            toast({ title: "File list refreshed", description: `Found ${updatedFiles.length} files.` });
+        }
+
         // If no file is selected, or the selected file was deleted, select the first one.
         if ((!selectedFileName && updatedFiles.length > 0) || (selectedFileName && !updatedFiles.some(f => f.name === selectedFileName))) {
           const newFileToSelect = updatedFiles[0]?.name || null;
@@ -80,13 +85,27 @@ export function MainView({ initialFiles }: MainViewProps) {
         setFileListError(err.message || "An unknown error occurred while fetching files.");
       }
     });
-  }, [selectedFileName]);
+  }, [selectedFileName, toast]);
 
   useEffect(() => {
     refreshFileList();
     // We only want to run this once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Listen for new uploads from Firebase
+  useEffect(() => {
+    const channel = new BroadcastChannel('new-upload');
+    const onNewUpload = () => {
+        console.log("New upload detected, refreshing file list...");
+        refreshFileList(true);
+    };
+    channel.addEventListener('message', onNewUpload);
+    return () => {
+        channel.removeEventListener('message', onNewUpload);
+        channel.close();
+    }
+  }, [refreshFileList]);
 
 
   useEffect(() => {
@@ -106,11 +125,10 @@ export function MainView({ initialFiles }: MainViewProps) {
             if (isBinary && selectedFile.size > 0) {
                 const CHUNK_SIZE = 1024 * 1024; // 1MB
                 const start = Math.max(0, selectedFile.size - CHUNK_SIZE);
-                const end = selectedFile.size -1;
-
-                console.log(`[CLIENT] Downloading range ${start}-${end} for ${selectedFile.name}`);
+                
+                console.log(`[CLIENT] Downloading range starting at ${start} for ${selectedFile.name}`);
                 const fileRef = ref(clientStorage, `uploads/${selectedFile.name}`);
-                const blob = await getBlob(fileRef, start, end);
+                const blob = await getBlob(fileRef, start); // Download from start to end
                 const arrayBuffer = await blob.arrayBuffer();
                 fileChunkBase64 = arrayBufferToBase64(arrayBuffer);
                 console.log("[CLIENT] Successfully downloaded chunk and encoded to Base64.");
@@ -148,11 +166,6 @@ export function MainView({ initialFiles }: MainViewProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFileName]);
-
-  const handleUploadComplete = useCallback(() => {
-    toast({ title: "Upload Successful", description: "File sent to server. Refreshing list..." });
-    refreshFileList();
-  }, [refreshFileList, toast]);
 
   const handleDeleteFile = useCallback(async (name: string) => {
      startTransition(async () => {
@@ -202,7 +215,7 @@ export function MainView({ initialFiles }: MainViewProps) {
                 <AlertDescription>
                     {fileListError}
                     <br/><br/>
-                    Please ensure your Storage Security Rules in the Firebase Console are correct.
+                    Please ensure your Storage Security Rules and CORS configuration in the Firebase Console are correct.
                 </AlertDescription>
              </Alert>
            </div>
@@ -211,7 +224,6 @@ export function MainView({ initialFiles }: MainViewProps) {
             files={files}
             selectedFile={selectedFileName}
             onSelectFile={handleSelectFile}
-            onUploadComplete={handleUploadComplete}
             onDeleteFile={handleDeleteFile}
             onDownloadFile={handleDownloadFile}
             isLoading={isFileListLoading}

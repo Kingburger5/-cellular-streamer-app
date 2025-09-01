@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Antenna, Trash2, Download } from "lucide-react";
 import { FileIcon } from "./file-icon";
-import { FileUploader } from "./file-uploader";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,13 +33,12 @@ interface FileListProps {
   files: UploadedFile[];
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
-  onUploadComplete: () => void;
   onDeleteFile: (name: string) => void;
   onDownloadFile: (name: string) => void;
   isLoading: boolean;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, onDeleteFile, onDownloadFile, isLoading }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onDeleteFile, onDownloadFile, isLoading }: FileListProps) {
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
@@ -122,13 +120,15 @@ export function FileList({ files, selectedFile, onSelectFile, onUploadComplete, 
           ))}
           {!isLoading && files.length === 0 && (
             <div className="text-center text-muted-foreground p-4">
-                No files in storage. Upload a file to begin.
+                No files in storage. Awaiting new data from cellular module.
             </div>
           )}
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>
-        <FileUploader onUploadComplete={onUploadComplete} />
+        <div className="p-4 text-xs text-center text-muted-foreground">
+            Uploads are handled exclusively by the cellular transmission module.
+        </div>
       </SidebarFooter>
     </>
   );
