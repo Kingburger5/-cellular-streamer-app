@@ -3,7 +3,7 @@
 
 # Explicitly set a backend ID to conform to naming requirements (lowercase, digits, hyphens).
 backend:
-  id: cellularstreamer
+  id: my-app
 
 runConfig:
   # Increase this value if you'd like to automatically spin up
