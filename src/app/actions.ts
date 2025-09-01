@@ -3,6 +3,7 @@
 
 import { adminStorage } from "@/lib/firebase-admin";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
+import { extractData } from "@/ai/flows/extract-data-flow";
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
@@ -79,75 +80,6 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
 }
 
 
-/**
- * Parses a GUANO metadata string into a structured DataPoint object.
- * This is a fast, reliable, rule-based parser that avoids AI unpredictability.
- */
-function parseGuanoMetadata(metadataString: string, originalFilename: string): DataPoint | null {
-  try {
-    const fields = metadataString.split('|');
-    const metadataMap = new Map<string, string>();
-
-    fields.forEach(field => {
-      const parts = field.split(':');
-      if (parts.length > 1) {
-        const key = parts[0].trim();
-        const value = parts.slice(1).join(':').trim();
-        metadataMap.set(key, value);
-      }
-    });
-
-    let audioSettings: any = {};
-    const audioSettingsString = metadataMap.get('Audio settings');
-    if (audioSettingsString) {
-      try {
-        // The value is a JSON array string, e.g., '[{...}]'
-        audioSettings = JSON.parse(audioSettingsString)[0];
-      } catch (e) {
-        console.error("Failed to parse 'Audio settings' JSON:", e);
-      }
-    }
-
-    const locPosition = metadataMap.get('Loc Position')?.split(' ') || [];
-
-    const dataPoint: DataPoint = {
-      fileInformation: {
-        originalFilename: metadataMap.get('Original Filename') || originalFilename,
-        recordingDateTime: metadataMap.get('Timestamp'),
-        recordingDurationSeconds: Number(metadataMap.get('Length')) || undefined,
-        sampleRateHz: Number(metadataMap.get('Samplerate')) || undefined,
-      },
-      recorderDetails: {
-        make: metadataMap.get('Make'),
-        model: metadataMap.get('Model'),
-        serialNumber: metadataMap.get('Serial'),
-        firmwareVersion: metadataMap.get('Firmware Version'),
-        gainSetting: audioSettings.gain,
-      },
-      locationEnvironmentalData: {
-        latitude: locPosition[0] ? Number(locPosition[0]) : undefined,
-        longitude: locPosition[1] ? Number(locPosition[1]) : undefined,
-        temperatureCelsius: Number(metadataMap.get('Temperature Int')) || undefined,
-      },
-      triggerSettings: {
-        windowSeconds: audioSettings['trig window'],
-        maxLengthSeconds: audioSettings['trig max len'],
-        minFrequencyHz: audioSettings['trig min freq'],
-        maxFrequencyHz: audioSettings['trig max freq'],
-        minDurationSeconds: audioSettings['trig min dur'],
-        maxDurationSeconds: audioSettings['trig max dur'],
-      },
-    };
-    
-    return dataPoint;
-
-  } catch (error) {
-    console.error('[SERVER_ERROR] Failed to parse GUANO metadata string:', error);
-    return null;
-  }
-}
-
-
 export async function processFileAction(
   filename: string
 ): Promise<FileContent | { error: string }> {
@@ -184,13 +116,14 @@ export async function processFileAction(
         }
 
         if (rawMetadata) {
-            // Use the fast, reliable parser instead of the AI
-            const parsedData = parseGuanoMetadata(rawMetadata, filename);
-            if (parsedData) {
-                extractedData = [parsedData];
-                console.log(`[SERVER_INFO] Step 3 Success: Manually parsed GUANO data.`);
+            console.log(`[SERVER_INFO] Step 3 Started: AI processing of '${filename}' metadata.`);
+            const aiResult = await extractData({ fileContent: rawMetadata, filename });
+            if (aiResult) {
+                // The AI returns an object with a single 'data' property which is an array
+                extractedData = aiResult.data;
+                console.log(`[SERVER_INFO] Step 3 Success: AI successfully extracted data.`);
             } else {
-                console.log(`[SERVER_INFO] Step 3 Failed: Manual parser could not extract data from '${filename}'.`);
+                 console.log(`[SERVER_INFO] Step 3 Failed: AI could not extract data from '${filename}'.`);
             }
         } else {
              console.log(`[SERVER_INFO] Step 3 Skipped: No raw metadata to process for '${filename}'.`);

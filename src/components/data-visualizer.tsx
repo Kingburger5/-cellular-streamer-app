@@ -4,8 +4,7 @@
 import type { DataPoint } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock, Gauge, Settings, SlidersHorizontal, GitCommitHorizontal } from 'lucide-react';
+import { Thermometer, RadioTower, HardDrive, Loader, MapPin, Calendar, Clock, Gauge, Settings, SlidersHorizontal, GitCommitHorizontal, Zap, AlertTriangle, FileWarning } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[] | null, fileName: string, isLoading: boolean }) {
@@ -16,7 +15,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
             <Loader className="w-12 h-12 mb-4 animate-spin" />
             <h3 className="font-semibold">Analyzing Data...</h3>
-            <p className="text-sm">Extracting structured data from the file's metadata.</p>
+            <p className="text-sm">AI is extracting structured data from the file's metadata.</p>
         </div>
     );
   }
@@ -32,7 +31,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
     );
   }
 
-  const formatHz = (hz: number) => {
+  const formatHz = (hz: number | undefined) => {
     if (!hz && hz !== 0) return 'N/A';
     if (hz >= 1000) {
       return `${(hz / 1000).toFixed(1)} kHz`;
@@ -51,7 +50,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
           </div>
           <div>
               <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="text-xl font-bold">{value ?? 'N/A'} <span className="text-sm font-normal text-muted-foreground">{unit}</span></p>
+              <p className="text-xl font-bold">{value ?? 'N/A'}{value !== undefined && unit ? <span className="text-sm font-normal text-muted-foreground ml-1">{unit}</span> : ''}</p>
           </div>
       </div>
   );
@@ -68,14 +67,13 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!apiKey && (
+            {!apiKey || apiKey === "YOUR_API_KEY_HERE" ? (
               <div className="h-48 w-full bg-destructive/10 rounded-lg flex flex-col items-center justify-center p-4 text-center text-destructive">
                 <AlertTriangle className="w-8 h-8 mb-2" />
                 <h4 className="font-semibold">Google Maps API Key is missing.</h4>
                 <p className="text-sm">Please add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to your `.env` file to display the map.</p>
               </div>
-            )}
-            {apiKey && locationEnvironmentalData.latitude && locationEnvironmentalData.longitude ? (
+            ) : locationEnvironmentalData.latitude && locationEnvironmentalData.longitude ? (
               <div className="h-48 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <iframe
                   className="w-full h-full border-0 rounded-lg"
@@ -86,7 +84,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                 </iframe>
               </div>
             ) : (
-             apiKey && <div className="h-48 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
+             <div className="h-48 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <p>No location data available.</p>
               </div>
             )}
@@ -116,7 +114,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                     <RadioTower className="w-4 h-4 mt-1 text-muted-foreground" />
                     <div>
                         <p className="font-semibold">Sample Rate</p>
-                        <p className="text-muted-foreground">{formatHz(fileInformation.sampleRateHz || 0)}</p>
+                        <p className="text-muted-foreground">{formatHz(fileInformation.sampleRateHz)}</p>
                     </div>
                 </div>
             </div>
@@ -148,8 +146,8 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                  <p className="col-span-2 text-sm font-medium text-muted-foreground -mb-2">Trigger Details</p>
                  <StatCard icon={<Clock/>} label="Window" value={triggerSettings.windowSeconds?.toFixed(1)} unit="s" />
                  <StatCard icon={<Clock/>} label="Max Length" value={triggerSettings.maxLengthSeconds} unit="s" />
-                 <StatCard icon={<Zap/>} label="Min Frequency" value={formatHz(triggerSettings.minFrequencyHz || 0)} />
-                 <StatCard icon={<Zap/>} label="Max Frequency" value={formatHz(triggerSettings.maxFrequencyHz || 0)} />
+                 <StatCard icon={<Zap/>} label="Min Frequency" value={formatHz(triggerSettings.minFrequencyHz)} />
+                 <StatCard icon={<Zap/>} label="Max Frequency" value={formatHz(triggerSettings.maxFrequencyHz)} />
                  <StatCard icon={<Clock/>} label="Min Duration" value={triggerSettings.minDurationSeconds} unit="s" />
                  <StatCard icon={<Clock/>} label="Max Duration" value={triggerSettings.maxDurationSeconds} unit="s" />
             </CardContent>
