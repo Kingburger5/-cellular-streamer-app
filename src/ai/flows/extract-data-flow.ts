@@ -1,7 +1,7 @@
  'use server';
 
 /**
- * @fileOverview An AI agent for extracting structured data from text, following specific business logic.
+ * @fileOverview An AI agent for extracting structured data from GUANO metadata text.
  *
  * - extractData - A function that extracts structured data from a text blob.
  * - ExtractDataInput - The input type for the extractData function.
@@ -10,112 +10,74 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
-import { add, format } from 'date-fns';
 import type { DataPoint } from '@/lib/types';
 
 
 const ExtractDataInputSchema = z.object({
-  fileContent: z.string().describe('The text content to extract data from.'),
+  fileContent: z.string().describe('The GUANO metadata text content to extract data from.'),
   filename: z.string().describe('The original filename of the uploaded file.'),
 });
 export type ExtractDataInput = z.infer<typeof ExtractDataInputSchema>;
 
 
-const DataPointSchema = z.object({
-  siteName: z.string().optional().describe('The name of the site, extracted from the filename (part before the first underscore).'),
-  surveyDate: z.string().optional().describe('The date of the survey in YYYY-MM-DD format, from the timestamp.'),
-  surveyFinishTime: z.string().optional().describe('The finish time of the survey in HH:mm:ss format, calculated by adding the recording length to the timestamp.'),
-  timestamp: z.string().describe('The timestamp of the data point (e.g., "2025-03-02 20:50:16+13:00").'),
-  latitude: z.number().describe('The latitude of the location.'),
-  longitude: z.number().describe('The longitude of the location.'),
-  temperature: z.number().describe('The temperature reading.'),
-  length: z.number().optional().describe('The length of the recording in seconds.'),
-  flybys: z.number().optional().describe('The number of fly-bys. This field may not be present.'),
-  sampleRate: z.number().optional().describe('The sample rate in Hz (e.g., 256000).'),
-  minTriggerFreq: z.number().optional().describe('The minimum trigger frequency in Hz.'),
-  maxTriggerFreq: z.number().optional().describe('The maximum trigger frequency in Hz.'),
-  make: z.string().optional().describe('The make of the recording device (e.g., "Wildlife Acoustics, Inc.").'),
-  model: z.string().optional().describe('The model of the recording device (e.g., "Song Meter Mini Bat").'),
-  serial: z.string().optional().describe('The serial number of the recording device (e.g., "SMU06612").'),
-  firmwareVersion: z.string().optional().describe("The firmware version of the device."),
-  gain: z.number().optional().describe("The gain setting from the audio settings."),
-  triggerWindow: z.number().optional().describe("The trigger window in seconds."),
-  triggerMaxLen: z.number().optional().describe("The maximum trigger length in seconds."),
-  triggerMinDur: z.number().optional().describe("The minimum trigger duration in seconds."),
-  triggerMaxDur: z.number().optional().describe("The maximum trigger duration in seconds."),
-});
-
-
+// This schema is designed to exactly match the desired nested JSON output.
 const ExtractDataOutputSchema = z.object({
-  data: z.array(DataPointSchema).describe('The extracted structured data points.'),
+  data: z.array(z.object({
+    fileInformation: z.object({
+      originalFilename: z.string().optional(),
+      recordingDateTime: z.string().optional(),
+      recordingDurationSeconds: z.number().optional(),
+      sampleRateHz: z.number().optional(),
+    }),
+    recorderDetails: z.object({
+      make: z.string().optional(),
+      model: z.string().optional(),
+      serialNumber: z.string().optional(),
+      firmwareVersion: z.string().optional(),
+      gainSetting: z.number().optional(),
+    }),
+    locationEnvironmentalData: z.object({
+      latitude: z.number().optional(),
+      longitude: z.number().optional(),
+      temperatureCelsius: z.number().optional(),
+    }),
+    triggerSettings: z.object({
+      windowSeconds: z.number().optional(),
+      maxLengthSeconds: z.number().optional(),
+      minFrequencyHz: z.number().optional(),
+      maxFrequencyHz: z.number().optional(),
+      minDurationSeconds: z.number().optional(),
+      maxDurationSeconds: z.number().optional(),
+    }),
+  })).describe('The extracted structured data points.'),
 });
 export type ExtractDataOutput = z.infer<typeof ExtractDataOutputSchema>;
 
+
+// The wrapper function is now simplified to just call the AI flow.
 export async function extractData(input: ExtractDataInput): Promise<ExtractDataOutput> {
-  const aiResult = await extractDataFlow(input);
-
-  // Post-process to calculate derived fields
-  if (aiResult.data) {
-    aiResult.data = aiResult.data.map(point => {
-        let surveyDate: string | undefined = undefined;
-        let surveyFinishTime: string | undefined = undefined;
-        
-        try {
-          const startDate = new Date(point.timestamp);
-          surveyDate = format(startDate, 'yyyy-MM-dd');
-          
-          if(point.length) {
-            const finishDate = add(startDate, { seconds: point.length });
-            surveyFinishTime = format(finishDate, 'HH:mm:ss');
-          }
-        } catch (e) {
-            console.error("Could not parse date for calculation", e);
-        }
-
-        return {
-            ...point,
-            siteName: input.filename.split('_')[0],
-            surveyDate,
-            surveyFinishTime
-        };
-    });
-  }
-
-  return aiResult;
+  return extractDataFlow(input);
 }
+
 
 const prompt = ai.definePrompt({
   name: 'extractDataPrompt',
   input: {schema: ExtractDataInputSchema},
   output: {schema: ExtractDataOutputSchema},
-  prompt: `You are an expert at extracting structured data from GUANO metadata text. The provided text consists of key-value pairs, separated by pipes ('|') which should be treated as newlines.
+  prompt: `You are an expert at parsing GUANO metadata text into a structured JSON object.
 
-Your task is to parse this text and extract the relevant data points into a single, structured data point object.
+**CRITICAL INSTRUCTIONS:**
+1.  Parse the provided text and extract the data into the JSON structure defined by the output schema.
+2.  **Audio settings**: This is a JSON string inside a single-element array (e.g., '[{...}]'). You MUST parse this JSON to get the trigger settings and gain.
+3.  **Loc Position**: This field contains Latitude and Longitude as two numbers separated by a space. You MUST extract the first number as 'latitude' and the second as 'longitude'.
+4.  **Field Mapping**: Map the GUANO fields to the JSON output fields precisely as shown in the example.
+5.  **Omissions**: If a field is not present in the text, you MUST omit it from the output object. Do not guess or fill with default values.
+6.  **Calculations**: Do not perform any calculations or conversions (e.g., Hz to kHz). Return the raw numeric values as they appear in the source text.
+7.  **Output**: You must return a single object in the 'data' array. If no data can be parsed, return an empty array.
 
-**Extraction Rules (CRITICAL):**
+**EXAMPLE:**
 
-1.  **siteName**: This will be handled by the system. Do not extract it.
-2.  **Loc Position**: This field contains Latitude and Longitude as two numbers separated by a space (e.g., "-37.00403 174.57577"). You MUST extract the first number into the 'latitude' field and the second number into the 'longitude' field.
-3.  **Temperature Int**: Extract its numeric value into the 'temperature' field.
-4.  **Samplerate**: Extract its numeric value into the 'sampleRate' field.
-5.  **Make**: From a key like 'Make:Wildlife Acoustics, Inc.', extract 'Wildlife Acoustics, Inc.' for the 'make' field.
-6.  **Model**: From a key like 'Model:Song Meter Mini Bat', extract 'Song Meter Mini Bat' for the 'model' field.
-7.  **Serial**: From 'Serial:SMU06612', extract 'SMU06612' for 'serial'.
-8.  **Firmware Version**: Extract the value for 'firmwareVersion'.
-9.  **Audio settings**: This field contains a JSON string inside a single-element array (e.g., '[{...}]'). You MUST parse this JSON to extract the following values into their corresponding fields:
-    - "gain" -> \`gain\` (number)
-    - "trig window" -> \`triggerWindow\` (number)
-    - "trig max len" -> \`triggerMaxLen\` (number)
-    - "trig min freq" -> \`minTriggerFreq\` (number)
-    - "trig max freq" -> \`maxTriggerFreq\` (number)
-    - "trig min dur" -> \`triggerMinDur\` (number)
-    - "trig max dur" -> \`triggerMaxDur\` (number)
-10. **Other fields**: Directly map the values from the text to the corresponding field in the output schema (e.g., 'Timestamp' -> \`timestamp\`, 'Length' -> \`length\`).
-11. **Omissions**: If a field is not present in the text, you must omit it from the output. Do not guess or fill with default values.
-12. **System Calculations**: **DO NOT** calculate \`siteName\`, \`surveyDate\` or \`surveyFinishTime\` yourself. The system will handle this.
-13. **Output**: If no parsable data is found, return an empty array for the 'data' field.
-
-**Example Input Text:**
+**Input Text:**
 GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song Meter Mini Bat|Serial:SMU06612|WA|Song Meter|Prefix:1|WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]|Length:3.921|Original Filename:1_20250302_205009.wav|Timestamp:2025-03-02 20:50:09+13:00|Loc Position:-37.00403 174.57577|Temperature Int:20.75|Samplerate:256000
 
 **Your JSON output for this example MUST BE:**
@@ -123,23 +85,32 @@ GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song 
 {
   "data": [
     {
-      "timestamp": "2025-03-02 20:50:09+13:00",
-      "latitude": -37.00403,
-      "longitude": 174.57577,
-      "temperature": 20.75,
-      "length": 3.921,
-      "sampleRate": 256000,
-      "make": "Wildlife Acoustics, Inc.",
-      "model": "Song Meter Mini Bat",
-      "serial": "SMU06612",
-      "firmwareVersion": "4.6",
-      "gain": 12,
-      "triggerWindow": 3.0,
-      "triggerMaxLen": 15.0,
-      "minTriggerFreq": 30000,
-      "maxTriggerFreq": 128000,
-      "triggerMinDur": 0.0015,
-      "triggerMaxDur": 0.0
+      "fileInformation": {
+        "originalFilename": "1_20250302_205009.wav",
+        "recordingDateTime": "2025-03-02 20:50:09+13:00",
+        "recordingDurationSeconds": 3.921,
+        "sampleRateHz": 256000
+      },
+      "recorderDetails": {
+        "make": "Wildlife Acoustics, Inc.",
+        "model": "Song Meter Mini Bat",
+        "serialNumber": "SMU06612",
+        "firmwareVersion": "4.6",
+        "gainSetting": 12
+      },
+      "locationEnvironmentalData": {
+        "latitude": -37.00403,
+        "longitude": 174.57577,
+        "temperatureCelsius": 20.75
+      },
+      "triggerSettings": {
+        "windowSeconds": 3.0,
+        "maxLengthSeconds": 15.0,
+        "minFrequencyHz": 30000,
+        "maxFrequencyHz": 128000,
+        "minDurationSeconds": 0.0015,
+        "maxDurationSeconds": 0.0
+      }
     }
   ]
 }

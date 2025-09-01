@@ -6,9 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock, Gauge, Settings, SlidersHorizontal, GitCommitHorizontal } from 'lucide-react';
-import { Button } from './ui/button';
-import { useToast } from '@/hooks/use-toast';
-import { useState, useTransition } from 'react';
 import { Separator } from '@/components/ui/separator';
 
 export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[] | null, fileName: string, isLoading: boolean }) {
@@ -35,11 +32,6 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
     );
   }
 
-  const chartData = data.map(d => ({
-    ...d,
-    time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  }));
-
   const formatHz = (hz: number) => {
     if (!hz && hz !== 0) return 'N/A';
     if (hz >= 1000) {
@@ -48,10 +40,9 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
     return `${hz} Hz`;
   }
   
-  const latestData = data[0]; // Assuming the most relevant data is the first item
-
-  const avgTemperature = (data.reduce((acc, d) => acc + (d.temperature || 0), 0) / data.length).toFixed(1);
-  const totalFlybys = data.reduce((acc, d) => acc + (d.flybys || 0), 0);
+  // Use the first data point as the source of truth for display
+  const latestData = data[0];
+  const { fileInformation, recorderDetails, locationEnvironmentalData, triggerSettings } = latestData;
 
   const StatCard = ({ icon, label, value, unit }: { icon: React.ReactNode, label: string, value: string | number | undefined, unit?: string}) => (
       <div className="flex items-center gap-4">
@@ -84,13 +75,13 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                 <p className="text-sm">Please add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to your `.env` file to display the map.</p>
               </div>
             )}
-            {apiKey && latestData.latitude && latestData.longitude ? (
+            {apiKey && locationEnvironmentalData.latitude && locationEnvironmentalData.longitude ? (
               <div className="h-48 w-full bg-muted rounded-lg flex items-center justify-center relative overflow-hidden">
                 <iframe
                   className="w-full h-full border-0 rounded-lg"
                   loading="lazy"
                   allowFullScreen
-                  src={`https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${latestData.latitude},${latestData.longitude}&zoom=14`}
+                  src={`https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${locationEnvironmentalData.latitude},${locationEnvironmentalData.longitude}&zoom=14`}
                 >
                 </iframe>
               </div>
@@ -103,29 +94,29 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                 <div className="flex items-start gap-2">
                     <Calendar className="w-4 h-4 mt-1 text-muted-foreground" />
                     <div>
-                        <p className="font-semibold">Survey Date</p>
-                        <p className="text-muted-foreground">{latestData.surveyDate || 'N/A'}</p>
+                        <p className="font-semibold">Recording Date</p>
+                        <p className="text-muted-foreground">{fileInformation.recordingDateTime ? new Date(fileInformation.recordingDateTime).toLocaleString() : 'N/A'}</p>
                     </div>
                 </div>
                  <div className="flex items-start gap-2">
                     <Clock className="w-4 h-4 mt-1 text-muted-foreground" />
                     <div>
-                        <p className="font-semibold">Finish Time</p>
-                        <p className="text-muted-foreground">{latestData.surveyFinishTime || 'N/A'}</p>
+                        <p className="font-semibold">Duration</p>
+                        <p className="text-muted-foreground">{fileInformation.recordingDurationSeconds} s</p>
                     </div>
                 </div>
                 <div className="flex items-start gap-2">
                     <Thermometer className="w-4 h-4 mt-1 text-muted-foreground" />
                     <div>
-                        <p className="font-semibold">Avg. Temp</p>
-                        <p className="text-muted-foreground">{avgTemperature}°C</p>
+                        <p className="font-semibold">Temperature</p>
+                        <p className="text-muted-foreground">{locationEnvironmentalData.temperatureCelsius}°C</p>
                     </div>
                 </div>
-                <div className="flex items-start gap-2">
-                    <Send className="w-4 h-4 mt-1 text-muted-foreground" />
+                 <div className="flex items-start gap-2">
+                    <RadioTower className="w-4 h-4 mt-1 text-muted-foreground" />
                     <div>
-                        <p className="font-semibold">Fly-bys</p>
-                        <p className="text-muted-foreground">{totalFlybys || 0}</p>
+                        <p className="font-semibold">Sample Rate</p>
+                        <p className="text-muted-foreground">{formatHz(fileInformation.sampleRateHz || 0)}</p>
                     </div>
                 </div>
             </div>
@@ -137,10 +128,10 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                 <CardTitle className="flex items-center gap-2 text-lg"><HardDrive /> Device Info</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                 <StatCard icon={<RadioTower/>} label="Model" value={latestData.model} />
-                 <StatCard icon={<GitCommitHorizontal/>} label="Make" value={latestData.make} />
-                 <StatCard icon={<Settings/>} label="Serial" value={latestData.serial} />
-                 <StatCard icon={<Gauge/>} label="Firmware" value={latestData.firmwareVersion} />
+                 <StatCard icon={<RadioTower/>} label="Model" value={recorderDetails.model} />
+                 <StatCard icon={<GitCommitHorizontal/>} label="Make" value={recorderDetails.make} />
+                 <StatCard icon={<Settings/>} label="Serial" value={recorderDetails.serialNumber} />
+                 <StatCard icon={<Gauge/>} label="Firmware" value={recorderDetails.firmwareVersion} />
             </CardContent>
         </Card>
 
@@ -149,58 +140,20 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                 <CardTitle className="flex items-center gap-2 text-lg"><SlidersHorizontal /> Recording Settings</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4">
-                 <StatCard icon={<RadioTower/>} label="Sample Rate" value={formatHz(latestData.sampleRate || 0)} />
-                 <StatCard icon={<Zap/>} label="Gain" value={latestData.gain} unit="dB" />
-                 
+                 <StatCard icon={<Zap/>} label="Gain" value={recorderDetails.gainSetting} unit="dB" />
+                 <div></div>
+
                  <div className="col-span-2"> <Separator /> </div>
                  
                  <p className="col-span-2 text-sm font-medium text-muted-foreground -mb-2">Trigger Details</p>
-                 <StatCard icon={<Clock/>} label="Window" value={latestData.triggerWindow?.toFixed(1)} unit="s" />
-                 <StatCard icon={<Clock/>} label="Max Length" value={latestData.triggerMaxLen} unit="s" />
-                 <StatCard icon={<Zap/>} label="Min Frequency" value={formatHz(latestData.minTriggerFreq || 0)} />
-                 <StatCard icon={<Zap/>} label="Max Frequency" value={formatHz(latestData.maxTriggerFreq || 0)} />
-                 <StatCard icon={<Clock/>} label="Min Duration" value={latestData.triggerMinDur} unit="s" />
-                 <StatCard icon={<Clock/>} label="Max Duration" value={latestData.triggerMaxDur} unit="s" />
+                 <StatCard icon={<Clock/>} label="Window" value={triggerSettings.windowSeconds?.toFixed(1)} unit="s" />
+                 <StatCard icon={<Clock/>} label="Max Length" value={triggerSettings.maxLengthSeconds} unit="s" />
+                 <StatCard icon={<Zap/>} label="Min Frequency" value={formatHz(triggerSettings.minFrequencyHz || 0)} />
+                 <StatCard icon={<Zap/>} label="Max Frequency" value={formatHz(triggerSettings.maxFrequencyHz || 0)} />
+                 <StatCard icon={<Clock/>} label="Min Duration" value={triggerSettings.minDurationSeconds} unit="s" />
+                 <StatCard icon={<Clock/>} label="Max Duration" value={triggerSettings.maxDurationSeconds} unit="s" />
             </CardContent>
         </Card>
-
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Temperature Over Time</CardTitle>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis unit="°C" />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="temperature" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {totalFlybys > 0 && (
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <CardTitle>Fly-bys Over Time</CardTitle>
-            </CardHeader>
-            <CardContent className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="flybys" fill="hsl(var(--chart-2))" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
 
       </div>
     </ScrollArea>

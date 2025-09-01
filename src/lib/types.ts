@@ -5,33 +5,34 @@ export interface UploadedFile {
   uploadDate: Date;
 }
 
+// This represents the fully parsed, nested data structure from the AI.
 export interface DataPoint {
-  // New fields from Google Sheet spec
-  siteName?: string;
-  surveyDate?: string; // Format: YYYY-MM-DD
-  surveyFinishTime?: string; // Format: HH:MM:SS
-
-  // Original fields from GUANO
-  timestamp: string;
-  latitude: number;
-  longitude: number;
-  temperature: number;
-  length?: number; 
-  flybys?: number;
-  sampleRate?: number;
-  minTriggerFreq?: number;
-  maxTriggerFreq?: number;
-  make?: string;
-  model?: string;
-  serial?: string;
-  
-  // Expanded GUANO fields
-  firmwareVersion?: string;
-  gain?: number;
-  triggerWindow?: number;
-  triggerMaxLen?: number;
-  triggerMinDur?: number;
-  triggerMaxDur?: number;
+  fileInformation: {
+    originalFilename?: string;
+    recordingDateTime?: string;
+    recordingDurationSeconds?: number;
+    sampleRateHz?: number;
+  };
+  recorderDetails: {
+    make?: string;
+    model?: string;
+    serialNumber?: string;
+    firmwareVersion?: string;
+    gainSetting?: number;
+  };
+  locationEnvironmentalData: {
+    latitude?: number;
+    longitude?: number;
+    temperatureCelsius?: number;
+  };
+  triggerSettings: {
+    windowSeconds?: number;
+    maxLengthSeconds?: number;
+    minFrequencyHz?: number;
+    maxFrequencyHz?: number;
+    minDurationSeconds?: number;
+    maxDurationSeconds?: number;
+  };
 }
 
 export interface FileContent {
@@ -39,6 +40,7 @@ export interface FileContent {
   extension: string;
   name: string;
   isBinary?: boolean;
+  // This now holds an array of the structured DataPoint objects.
   extractedData?: DataPoint[] | null;
   rawMetadata?: string | null;
 }
