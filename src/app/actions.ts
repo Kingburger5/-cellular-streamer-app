@@ -6,7 +6,6 @@ import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
-// This function is no longer called by the main view but is kept for potential future server-side needs.
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
         const bucket = adminStorage.bucket(BUCKET_NAME);
@@ -39,14 +38,16 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 function findGuanoMetadataInChunk(chunk: Buffer): string | null {
     try {
         const guanoKeyword = Buffer.from("GUANO");
-        const guanoIndex = chunk.indexOf(guanoKeyword);
+        // GUANO spec says the metadata can be at the end of the file.
+        // We search from the end of the chunk backwards.
+        const guanoIndex = chunk.lastIndexOf(guanoKeyword);
 
         if (guanoIndex === -1) {
             console.log("DEBUG: GUANO keyword not found in the provided chunk.");
             return null;
         }
 
-        // GUANO spec states the 4 bytes *before* the keyword is the metadata length.
+        // GUANO spec states the 4 bytes *before* the keyword is the metadata length (UInt32LE).
         const lengthOffset = guanoIndex - 4;
         if (lengthOffset < 0) {
             console.log("DEBUG: Not enough space for length before GUANO keyword.");
@@ -71,7 +72,7 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
 
         const metadataContent = chunk.toString('utf-8', metadataStart, metadataEnd);
         console.log(`DEBUG: Successfully extracted metadata chunk of length ${chunkLength}.`);
-        return metadataContent.trim();
+        return metadataContent.trim().replace(/\|/g, '\n'); // Normalize delimiters for the AI
     } catch (error) {
         console.error(`[SERVER_ERROR] Failed to process GUANO metadata from chunk:`, error);
         return null;
@@ -80,29 +81,39 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
 
 
 export async function processFileAction(
-  filename: string,
-  fileChunkBase64: string | null // Receive the chunk from the client
+  filename: string
 ): Promise<FileContent | { error: string }> {
     let rawMetadata: string | null = null;
     let extractedData: DataPoint[] | null = null;
+    let fileContentForClient: string = '';
     
     try {
-        console.log(`[SERVER_INFO] Step 1 Started: Processing '${filename}' from client-provided chunk.`);
+        console.log(`[SERVER_INFO] Step 1 Started: Processing '${filename}' on the server.`);
         
-        const extension = filename.split('.').pop()?.toLowerCase() || '';
+        const bucket = adminStorage.bucket(BUCKET_NAME);
+        const file = bucket.file(`uploads/${filename}`);
+        const [metadata] = await file.getMetadata();
 
-        // Only process chunk for binary files that might contain GUANO
-        if (fileChunkBase64 && ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension)) {
-            const fileBuffer = Buffer.from(fileChunkBase64, 'base64');
+        const extension = filename.split('.').pop()?.toLowerCase() || '';
+        const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
+
+        // Download a chunk of the file to look for metadata
+        // For GUANO, metadata is often at the end. We download the last 1MB.
+        const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB
+        const start = Math.max(0, Number(metadata.size) - CHUNK_SIZE);
+        const [fileBuffer] = await file.download({ start });
+
+        if (isBinary) {
             rawMetadata = findGuanoMetadataInChunk(fileBuffer);
              if (!rawMetadata) {
                  console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file chunk '${filename}'.`);
             } else {
                  console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block from chunk.`);
             }
-        } else if(fileChunkBase64) {
-            // For text-based files, the chunk is the whole file content
-            rawMetadata = Buffer.from(fileChunkBase64, 'base64').toString('utf-8');
+        } else {
+            // For text-based files, the buffer is the whole file content
+            rawMetadata = fileBuffer.toString('utf-8');
+            fileContentForClient = rawMetadata;
             console.log(`[SERVER_INFO] Step 2 Success: Processed text file '${filename}'.`);
         }
 
@@ -123,13 +134,8 @@ export async function processFileAction(
              console.log(`[SERVER_INFO] Step 3 Skipped: No raw metadata to send to AI for '${filename}'.`);
         }
 
-        const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
-        const content = isBinary
-            ? `data:application/octet-stream;base64,` // Placeholder, real content is not on the server
-            : rawMetadata || ''; // For text files, content is the metadata
-
         return { 
-            content, 
+            content: fileContentForClient, 
             extension, 
             name: filename, 
             isBinary,
@@ -147,7 +153,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucket = adminStorage.bucket("cellular-data-streamer.firebasestorage.app");
+    const bucket = adminStorage.bucket(BUCKET_NAME);
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
@@ -158,7 +164,7 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string) {
-  const bucket = adminStorage.bucket("cellular-data-streamer.firebasestorage.app");
+  const bucket = adminStorage.bucket(BUCKET_NAME);
   const file = bucket.file(`uploads/${fileName}`);
 
   // Generate a signed URL valid for 15 minutes that forces a download

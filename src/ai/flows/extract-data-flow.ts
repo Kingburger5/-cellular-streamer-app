@@ -9,7 +9,7 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 import { add, format } from 'date-fns';
 
 const DataPointSchema = z.object({
@@ -77,7 +77,8 @@ const prompt = ai.definePrompt({
   name: 'extractDataPrompt',
   input: {schema: ExtractDataInputSchema},
   output: {schema: ExtractDataOutputSchema},
-  prompt: `You are an expert at extracting structured data from text based on specific rules. The provided text is metadata from a file, in GUANO format. The format consists of key-value pairs, which may be delimited by '|' or newlines.
+  prompt: `You are an expert at extracting structured data from text based on specific rules.
+The provided text is metadata from a file, in GUANO format. The format consists of key-value pairs, which are on new lines.
 
 Your task is to parse this text and extract the relevant data points into a single data point object.
 
@@ -95,12 +96,25 @@ Your task is to parse this text and extract the relevant data points into a sing
 - If no parsable data is found, return an empty array for the 'data' field.
 
 **Example Input Text:**
-"GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song Meter Mini Bat|Serial:SMU06612|WA|Song Meter|Prefix:1|WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]|Length:4.208|Original Filename:1_20250302_205016.wav|Timestamp:2025-03-02 20:50:16+13:00|Loc Position:-37.00403 174.57577|Temperature Int:20.75|Samplerate:256000"
+GUANO
+Version:1.0
+Firmware Version:4.6
+Make:Wildlife Acoustics, Inc.
+Model:Song Meter Mini Bat
+Serial:SMU06612
+WA|Song Meter|Prefix:1
+WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]
+Length:4.208
+Original Filename:1_20250302_205016.wav
+Timestamp:2025-03-02 20:50:16+13:00
+Loc Position:-37.00403 174.57577
+Temperature Int:20.75
+Samplerate:256000
 
 **Example Filename:**
 "HADES_20250302_205016.wav"
 
-**From this example, you must extract:**
+**From this example, you must extract a single JSON object with these fields:**
 - siteName: "HADES"
 - timestamp: "2025-03-02 20:50:16+13:00"
 - latitude: -37.00403
