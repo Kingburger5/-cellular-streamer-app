@@ -31,17 +31,22 @@ function initializeFirebaseAdmin() {
             serviceAccount = JSON.parse(serviceAccountString);
         } catch (e) {
             // If parsing fails, it might be due to extra quotes or escaping issues.
-            // This is a common problem in some cloud environments.
             console.log("[SERVER_INFO] Direct JSON parsing failed. Attempting to clean string before parsing again.");
-            const cleanedString = serviceAccountString.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\n/g, '');
+            const cleanedString = serviceAccountString.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\\\n/g, '\\n');
             try {
                  serviceAccount = JSON.parse(cleanedString);
             } catch (finalError) {
                  console.error("[CRITICAL] Final JSON parsing attempt failed after cleaning the string.");
-                 // Throw the original, more informative error to avoid masking the root cause.
                  throw new Error(`Failed to parse service account JSON after cleaning. Original error: ${(e as Error).message}`);
             }
         }
+
+        // **CRITICAL FIX for "Invalid PEM formatted message" error**
+        // Un-escape the newline characters in the private key.
+        if (serviceAccount.private_key) {
+            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        }
+
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
