@@ -1,5 +1,5 @@
 
-import { initializeApp, getApps, App, cert, AppOptions } from "firebase-admin/app";
+import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 import { ServiceAccount } from "firebase-admin";
 
@@ -8,8 +8,9 @@ let adminStorage: Storage;
 
 try {
     if (!getApps().length) {
-        // This is the standard initialization that should be used in App Hosting.
-        // It relies on Application Default Credentials to be automatically discovered.
+        // This initialization reads credentials from environment variables.
+        // It's the most robust method when automatic discovery fails.
+        // These variables MUST be set as secrets in the App Hosting backend settings.
         const serviceAccount: ServiceAccount = {
             projectId: process.env.FIREBASE_PROJECT_ID!,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
@@ -17,8 +18,9 @@ try {
             privateKey: process.env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
         };
 
+        // Validate that the environment variables are set.
         if (!serviceAccount.projectId || !serviceAccount.clientEmail || !serviceAccount.privateKey) {
-             throw new Error("Firebase credentials environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are not set. Ensure they are configured as secrets in App Hosting.");
+             throw new Error("Firebase Admin credentials (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are not set in the environment. Please configure them as secrets in your App Hosting backend.");
         }
 
         adminApp = initializeApp({
