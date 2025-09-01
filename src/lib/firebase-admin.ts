@@ -17,7 +17,7 @@ try {
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
-            storageBucket: `cellular-data-streamer.appspot.com`
+            storageBucket: `cellular-data-streamer.firebasestorage.app`
         });
 
     } else {
