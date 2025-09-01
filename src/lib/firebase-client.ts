@@ -8,7 +8,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDWxIExVVeOR4eMaG8rYvb_svCquk8vWSg",
   authDomain: "cellular-data-streamer.firebaseapp.com",
   projectId: "cellular-data-streamer",
-  storageBucket: "cellular-data-streamer.firebasestorage.app",
+  storageBucket: "cellular-data-streamer.appspot.com",
   messagingSenderId: "945649809294",
   appId: "1:945649809294:web:81866a3f9e7734a96d16df"
 };
