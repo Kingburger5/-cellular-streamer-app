@@ -69,10 +69,21 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
             console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size.`);
             return null;
         }
-
-        const metadataContent = chunk.toString('utf-8', metadataStart, metadataEnd);
+        
+        // The metadata is not necessarily UTF-8, but it's the most likely encoding for the text parts.
+        // Let's be explicit and replace non-printable characters.
+        const rawMetadataSlice = chunk.subarray(metadataStart, metadataEnd);
+        let metadataContent = '';
+        for (let i = 0; i < rawMetadataSlice.length; i++) {
+            const charCode = rawMetadataSlice[i];
+            // Allow printable ASCII characters (32-126) plus newline, carriage return, and tab
+            if ((charCode >= 32 && charCode <= 126) || charCode === 10 || charCode === 13 || charCode === 9) {
+                 metadataContent += String.fromCharCode(charCode);
+            }
+        }
+        
         console.log(`DEBUG: Successfully extracted metadata chunk of length ${chunkLength}.`);
-        return metadataContent.trim().replace(/\|/g, '\n'); // Normalize delimiters for the AI
+        return metadataContent.trim();
     } catch (error) {
         console.error(`[SERVER_ERROR] Failed to process GUANO metadata from chunk:`, error);
         return null;
@@ -109,6 +120,7 @@ export async function processFileAction(
                  console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file chunk '${filename}'.`);
             } else {
                  console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block from chunk.`);
+                 fileContentForClient = rawMetadata.replace(/\|/g, '\n'); // Normalize for display
             }
         } else {
             // For text-based files, the buffer is the whole file content
@@ -139,7 +151,7 @@ export async function processFileAction(
             extension, 
             name: filename, 
             isBinary,
-            rawMetadata, 
+            rawMetadata: fileContentForClient, 
             extractedData 
         };
 

@@ -9,7 +9,7 @@ import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDri
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useTransition } from 'react';
-import { Separator } from './ui/separator';
+import { Separator } from '@/components/ui/separator';
 
 export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[] | null, fileName: string, isLoading: boolean }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;

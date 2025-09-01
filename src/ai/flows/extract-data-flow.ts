@@ -11,6 +11,15 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
 import { add, format } from 'date-fns';
+import type { DataPoint } from '@/lib/types';
+
+
+const ExtractDataInputSchema = z.object({
+  fileContent: z.string().describe('The text content to extract data from.'),
+  filename: z.string().describe('The original filename of the uploaded file.'),
+});
+export type ExtractDataInput = z.infer<typeof ExtractDataInputSchema>;
+
 
 const DataPointSchema = z.object({
   siteName: z.string().optional().describe('The name of the site, extracted from the filename (part before the first underscore).'),
@@ -36,11 +45,6 @@ const DataPointSchema = z.object({
   triggerMaxDur: z.number().optional().describe("The maximum trigger duration in seconds."),
 });
 
-const ExtractDataInputSchema = z.object({
-  fileContent: z.string().describe('The text content to extract data from.'),
-  filename: z.string().describe('The original filename of the uploaded file.'),
-});
-export type ExtractDataInput = z.infer<typeof ExtractDataInputSchema>;
 
 const ExtractDataOutputSchema = z.object({
   data: z.array(DataPointSchema).describe('The extracted structured data points.'),
@@ -70,6 +74,7 @@ export async function extractData(input: ExtractDataInput): Promise<ExtractDataO
 
         return {
             ...point,
+            siteName: input.filename.split('_')[0],
             surveyDate,
             surveyFinishTime
         };
@@ -89,7 +94,7 @@ Your task is to parse this text and extract the relevant data points into a sing
 
 **Extraction Rules (CRITICAL):**
 
-1.  **siteName**: Extract the part of the filename *before* the first underscore ('_'). For example, from 'HADES_2025..._...wav', extract 'HADES'.
+1.  **siteName**: This will be handled by the system. Do not extract it.
 2.  **Loc Position**: This field contains Latitude and Longitude as two numbers separated by a space (e.g., "-37.00403 174.57577"). You MUST extract the first number into the 'latitude' field and the second number into the 'longitude' field.
 3.  **Temperature Int**: Extract its numeric value into the 'temperature' field.
 4.  **Samplerate**: Extract its numeric value into the 'sampleRate' field.
@@ -107,21 +112,17 @@ Your task is to parse this text and extract the relevant data points into a sing
     - "trig max dur" -> \`triggerMaxDur\` (number)
 10. **Other fields**: Directly map the values from the text to the corresponding field in the output schema (e.g., 'Timestamp' -> \`timestamp\`, 'Length' -> \`length\`).
 11. **Omissions**: If a field is not present in the text, you must omit it from the output. Do not guess or fill with default values.
-12. **System Calculations**: **DO NOT** calculate \`surveyDate\` or \`surveyFinishTime\` yourself. The system will handle this.
+12. **System Calculations**: **DO NOT** calculate \`siteName\`, \`surveyDate\` or \`surveyFinishTime\` yourself. The system will handle this.
 13. **Output**: If no parsable data is found, return an empty array for the 'data' field.
 
 **Example Input Text:**
 GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song Meter Mini Bat|Serial:SMU06612|WA|Song Meter|Prefix:1|WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]|Length:3.921|Original Filename:1_20250302_205009.wav|Timestamp:2025-03-02 20:50:09+13:00|Loc Position:-37.00403 174.57577|Temperature Int:20.75|Samplerate:256000
-
-**Example Filename:**
-"HADES_20250302_205016.wav"
 
 **Your JSON output for this example MUST BE:**
 \`\`\`json
 {
   "data": [
     {
-      "siteName": "HADES",
       "timestamp": "2025-03-02 20:50:09+13:00",
       "latitude": -37.00403,
       "longitude": 174.57577,
