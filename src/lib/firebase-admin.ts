@@ -18,7 +18,7 @@ try {
         };
 
         if (!serviceAccount.projectId || !serviceAccount.clientEmail || !serviceAccount.privateKey) {
-             throw new Error("Firebase credentials environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are not set. See server logs for details.");
+             throw new Error("Firebase credentials environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY) are not set. Ensure they are configured as secrets in App Hosting.");
         }
 
         adminApp = initializeApp({
