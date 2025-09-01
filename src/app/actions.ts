@@ -1,4 +1,3 @@
-
 "use server";
 
 import { adminStorage } from "@/lib/firebase-admin";
@@ -47,6 +46,7 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
             return null;
         }
 
+        // GUANO spec states the 4 bytes *before* the keyword is the metadata length.
         const lengthOffset = guanoIndex - 4;
         if (lengthOffset < 0) {
             console.log("DEBUG: Not enough space for length before GUANO keyword.");
@@ -55,8 +55,9 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
 
         const chunkLength = chunk.readUInt32LE(lengthOffset);
         
+        // Basic validation on the parsed length
         if (chunkLength > chunk.length - guanoIndex || chunkLength <= 0) {
-            console.log(`DEBUG: Invalid metadata chunk length (${chunkLength}).`);
+            console.log(`DEBUG: Invalid metadata chunk length read from file: ${chunkLength}. Buffer size from GUANO index: ${chunk.length - guanoIndex}`);
             return null;
         }
 

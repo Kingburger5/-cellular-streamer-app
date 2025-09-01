@@ -77,7 +77,7 @@ const prompt = ai.definePrompt({
   name: 'extractDataPrompt',
   input: {schema: ExtractDataInputSchema},
   output: {schema: ExtractDataOutputSchema},
-  prompt: `You are an expert at extracting structured data from text based on specific rules. The provided text is metadata from a file, in GUANO format.
+  prompt: `You are an expert at extracting structured data from text based on specific rules. The provided text is metadata from a file, in GUANO format. The format consists of key-value pairs, which may be delimited by '|' or newlines.
 
 Your task is to parse this text and extract the relevant data points into a single data point object.
 
@@ -85,7 +85,7 @@ Your task is to parse this text and extract the relevant data points into a sing
 - **siteName**: Extract the part of the filename *before* the first underscore ('_'). For example, from 'SITE1_2025..._...wav', extract 'SITE1'.
 - **length**: Extract the numeric value from the 'Length' field.
 - The 'Loc Position' field contains both latitude and longitude, separated by a space. You must extract them into the separate 'latitude' and 'longitude' fields.
-- The temperature might be labeled as 'Temperature Int'.
+- The temperature might be labeled as 'Temperature Int'. Extract its numeric value.
 - The 'Samplerate' field should be extracted as 'sampleRate'.
 - From a key-value pair like 'Make:Wildlife Acoustics, Inc.', extract 'Wildlife Acoustics, Inc.' for the 'make' field.
 - From a key-value pair like 'Model:Song Meter Mini Bat', extract 'Song Meter Mini Bat' for the 'model' field.
