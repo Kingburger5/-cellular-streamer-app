@@ -26,7 +26,7 @@ const DataPointSchema = z.object({
   minTriggerFreq: z.number().optional().describe('The minimum trigger frequency in Hz.'),
   maxTriggerFreq: z.number().optional().describe('The maximum trigger frequency in Hz.'),
   make: z.string().optional().describe('The make of the recording device (e.g., "Wildlife Acoustics, Inc.").'),
-  model: z.string().optional().describe('The model of the recording device (e.g., "Song Meter Mini Bat").'),
+  model: z.string().optional().describe('The model of the recording device (e A.g., "Song Meter Mini Bat").'),
   serial: z.string().optional().describe('The serial number of the recording device (e.g., "SMU06612").'),
   firmwareVersion: z.string().optional().describe("The firmware version of the device."),
   gain: z.number().optional().describe("The gain setting from the audio settings."),
@@ -83,30 +83,32 @@ const prompt = ai.definePrompt({
   name: 'extractDataPrompt',
   input: {schema: ExtractDataInputSchema},
   output: {schema: ExtractDataOutputSchema},
-  prompt: `You are an expert at extracting structured data from text based on specific rules.
-The provided text is metadata from a file, in GUANO format. The format consists of key-value pairs, which are on new lines. Some lines may contain a JSON string.
+  prompt: `You are an expert at extracting structured data from GUANO metadata text. The provided text consists of key-value pairs, separated by pipes ('|') which should be treated as newlines.
 
-Your task is to parse this text and extract the relevant data points into a single data point object.
+Your task is to parse this text and extract the relevant data points into a single, structured data point object.
 
-**Extraction Rules:**
-- **siteName**: Extract the part of the filename *before* the first underscore ('_'). For example, from 'SITE1_2025..._...wav', extract 'SITE1'.
-- The 'Loc Position' field contains both latitude and longitude, separated by a space. You must extract them into the separate 'latitude' and 'longitude' fields.
-- The temperature might be labeled as 'Temperature Int'. Extract its numeric value.
-- The 'Samplerate' field should be extracted as 'sampleRate'.
-- From a key-value pair like 'Make:Wildlife Acoustics, Inc.', extract 'Wildlife Acoustics, Inc.' for the 'make' field.
-- From a key-value pair like 'Model:Song Meter Mini Bat', extract 'Song Meter Mini Bat' for the 'model' field.
-- From a key-value pair like 'Serial:SMU06612', extract 'SMU06612' for the 'serial' field.
-- Extract 'Firmware Version' as 'firmwareVersion'.
-- **CRITICAL**: The 'Audio settings' field contains a JSON string inside an array. You MUST parse this JSON to extract the following values:
-  - The value of "gain" from the JSON should be extracted to the 'gain' field.
-  - The value of "trig window" from the JSON should be extracted to the 'triggerWindow' field.
-  - The value of "trig max len" from the JSON should be extracted to the 'triggerMaxLen' field.
-  - The value of "trig min freq" from the JSON should be extracted to the 'minTriggerFreq' field.
-  - The value of "trig max freq" from the JSON should be extracted to the 'maxTriggerFreq' field.
-  - The value of "trig min dur" from the JSON should be extracted to the 'triggerMinDur' field.
-  - The value of "trig max dur" from the JSON should be extracted to the 'triggerMaxDur' field.
-- If a field is not present in the text, you should omit it from the output for that data point.
-- If no parsable data is found, return an empty array for the 'data' field.
+**Extraction Rules (CRITICAL):**
+
+1.  **siteName**: Extract the part of the filename *before* the first underscore ('_'). For example, from 'HADES_2025..._...wav', extract 'HADES'.
+2.  **Loc Position**: This field contains Latitude and Longitude as two numbers separated by a space (e.g., "-37.00403 174.57577"). You MUST extract the first number into the 'latitude' field and the second number into the 'longitude' field.
+3.  **Temperature Int**: Extract its numeric value into the 'temperature' field.
+4.  **Samplerate**: Extract its numeric value into the 'sampleRate' field.
+5.  **Make**: From a key like 'Make:Wildlife Acoustics, Inc.', extract 'Wildlife Acoustics, Inc.' for the 'make' field.
+6.  **Model**: From a key like 'Model:Song Meter Mini Bat', extract 'Song Meter Mini Bat' for the 'model' field.
+7.  **Serial**: From 'Serial:SMU06612', extract 'SMU06612' for 'serial'.
+8.  **Firmware Version**: Extract the value for 'firmwareVersion'.
+9.  **Audio settings**: This field contains a JSON string inside a single-element array (e.g., '[{...}]'). You MUST parse this JSON to extract the following values into their corresponding fields:
+    - "gain" -> \`gain\` (number)
+    - "trig window" -> \`triggerWindow\` (number)
+    - "trig max len" -> \`triggerMaxLen\` (number)
+    - "trig min freq" -> \`minTriggerFreq\` (number)
+    - "trig max freq" -> \`maxTriggerFreq\` (number)
+    - "trig min dur" -> \`triggerMinDur\` (number)
+    - "trig max dur" -> \`triggerMaxDur\` (number)
+10. **Other fields**: Directly map the values from the text to the corresponding field in the output schema (e.g., 'Timestamp' -> \`timestamp\`, 'Length' -> \`length\`).
+11. **Omissions**: If a field is not present in the text, you must omit it from the output. Do not guess or fill with default values.
+12. **System Calculations**: **DO NOT** calculate \`surveyDate\` or \`surveyFinishTime\` yourself. The system will handle this.
+13. **Output**: If no parsable data is found, return an empty array for the 'data' field.
 
 **Example Input Text:**
 GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song Meter Mini Bat|Serial:SMU06612|WA|Song Meter|Prefix:1|WA|Song Meter|Audio settings:[{"rate":256000,"gain":12,"trig window":3.0,"trig max len":15.0,"trig min freq":30000,"trig max freq":128000,"trig min dur":0.0015,"trig max dur":0.0000}]|Length:3.921|Original Filename:1_20250302_205009.wav|Timestamp:2025-03-02 20:50:09+13:00|Loc Position:-37.00403 174.57577|Temperature Int:20.75|Samplerate:256000
@@ -114,28 +116,35 @@ GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song 
 **Example Filename:**
 "HADES_20250302_205016.wav"
 
-**From this example, you must extract a single JSON object with these fields:**
-- siteName: "HADES"
-- timestamp: "2025-03-02 20:50:09+13:00"
-- latitude: -37.00403
-- longitude: 174.57577
-- temperature: 20.75
-- length: 3.921
-- sampleRate: 256000
-- make: "Wildlife Acoustics, Inc."
-- model: "Song Meter Mini Bat"
-- serial: "SMU06612"
-- firmwareVersion: "4.6"
-- gain: 12
-- triggerWindow: 3.0
-- triggerMaxLen: 15.0
-- minTriggerFreq: 30000
-- maxTriggerFreq: 128000
-- triggerMinDur: 0.0015
-- triggerMaxDur: 0.0
-- **DO NOT** calculate surveyDate or surveyFinishTime yourself. The system will do this.
+**Your JSON output for this example MUST BE:**
+\`\`\`json
+{
+  "data": [
+    {
+      "siteName": "HADES",
+      "timestamp": "2025-03-02 20:50:09+13:00",
+      "latitude": -37.00403,
+      "longitude": 174.57577,
+      "temperature": 20.75,
+      "length": 3.921,
+      "sampleRate": 256000,
+      "make": "Wildlife Acoustics, Inc.",
+      "model": "Song Meter Mini Bat",
+      "serial": "SMU06612",
+      "firmwareVersion": "4.6",
+      "gain": 12,
+      "triggerWindow": 3.0,
+      "triggerMaxLen": 15.0,
+      "minTriggerFreq": 30000,
+      "maxTriggerFreq": 128000,
+      "triggerMinDur": 0.0015,
+      "triggerMaxDur": 0.0
+    }
+  ]
+}
+\`\`\`
 
-Now, please process the following content:
+Now, please process the following content following all rules precisely.
 
 Filename: {{{filename}}}
 Content:

@@ -53,14 +53,14 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
   const avgTemperature = (data.reduce((acc, d) => acc + (d.temperature || 0), 0) / data.length).toFixed(1);
   const totalFlybys = data.reduce((acc, d) => acc + (d.flybys || 0), 0);
 
-  const StatCard = ({ icon, label, value, unit }: { icon: React.ReactNode, label: string, value: string | number, unit?: string}) => (
+  const StatCard = ({ icon, label, value, unit }: { icon: React.ReactNode, label: string, value: string | number | undefined, unit?: string}) => (
       <div className="flex items-center gap-4">
           <div className="bg-muted p-2 rounded-lg">
               {icon}
           </div>
           <div>
               <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="text-xl font-bold">{value} <span className="text-sm font-normal text-muted-foreground">{unit}</span></p>
+              <p className="text-xl font-bold">{value ?? 'N/A'} <span className="text-sm font-normal text-muted-foreground">{unit}</span></p>
           </div>
       </div>
   );
@@ -73,7 +73,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MapPin /> Survey Location &amp; Details</CardTitle>
             <CardDescription>
-                Location and environmental data from file
+                Location and environmental data extracted from the file.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -137,10 +137,10 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                 <CardTitle className="flex items-center gap-2 text-lg"><HardDrive /> Device Info</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                 <StatCard icon={<RadioTower/>} label="Model" value={latestData.model || 'N/A'} />
-                 <StatCard icon={<GitCommitHorizontal/>} label="Make" value={latestData.make || 'N/A'} />
-                 <StatCard icon={<Settings/>} label="Serial" value={latestData.serial || 'N/A'} />
-                 <StatCard icon={<Gauge/>} label="Firmware" value={latestData.firmwareVersion || 'N/A'} />
+                 <StatCard icon={<RadioTower/>} label="Model" value={latestData.model} />
+                 <StatCard icon={<GitCommitHorizontal/>} label="Make" value={latestData.make} />
+                 <StatCard icon={<Settings/>} label="Serial" value={latestData.serial} />
+                 <StatCard icon={<Gauge/>} label="Firmware" value={latestData.firmwareVersion} />
             </CardContent>
         </Card>
 
@@ -150,17 +150,17 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4">
                  <StatCard icon={<RadioTower/>} label="Sample Rate" value={formatHz(latestData.sampleRate || 0)} />
-                 <StatCard icon={<Zap/>} label="Gain" value={latestData.gain ?? 'N/A'} unit="dB" />
+                 <StatCard icon={<Zap/>} label="Gain" value={latestData.gain} unit="dB" />
                  
                  <div className="col-span-2"> <Separator /> </div>
                  
                  <p className="col-span-2 text-sm font-medium text-muted-foreground -mb-2">Trigger Details</p>
-                 <StatCard icon={<Clock/>} label="Window" value={latestData.triggerWindow ?? 'N/A'} unit="s" />
-                 <StatCard icon={<Clock/>} label="Max Length" value={latestData.triggerMaxLen ?? 'N/A'} unit="s" />
+                 <StatCard icon={<Clock/>} label="Window" value={latestData.triggerWindow} unit="s" />
+                 <StatCard icon={<Clock/>} label="Max Length" value={latestData.triggerMaxLen} unit="s" />
                  <StatCard icon={<Zap/>} label="Min Frequency" value={formatHz(latestData.minTriggerFreq || 0)} />
                  <StatCard icon={<Zap/>} label="Max Frequency" value={formatHz(latestData.maxTriggerFreq || 0)} />
-                 <StatCard icon={<Clock/>} label="Min Duration" value={latestData.triggerMinDur ?? 'N/A'} unit="s" />
-                 <StatCard icon={<Clock/>} label="Max Duration" value={latestData.triggerMaxDur ?? 'N/A'} unit="s" />
+                 <StatCard icon={<Clock/>} label="Min Duration" value={latestData.triggerMinDur} unit="s" />
+                 <StatCard icon={<Clock/>} label="Max Duration" value={latestData.triggerMaxDur} unit="s" />
             </CardContent>
         </Card>
 
