@@ -68,7 +68,7 @@ const prompt = ai.definePrompt({
 
 **CRITICAL INSTRUCTIONS:**
 1.  Parse the provided text and extract the data into the JSON structure defined by the output schema.
-2.  **Audio settings**: This is a JSON string inside a single-element array (e.g., '[{...}]'). You MUST parse this JSON to get the trigger settings and gain.
+2.  **Audio settings**: This is a JSON string inside a single-element array (e.g., '[{...}]'). You MUST parse this JSON to get the trigger settings and gain. The key names in the JSON map directly to the schema (e.g., "trig window" -> "windowSeconds").
 3.  **Loc Position**: This field contains Latitude and Longitude as two numbers separated by a space. You MUST extract the first number as 'latitude' and the second as 'longitude'.
 4.  **Field Mapping**: Map the GUANO fields to the JSON output fields precisely as shown in the example.
 5.  **Omissions**: If a field is not present in the text, you MUST omit it from the output object. Do not guess or fill with default values.
