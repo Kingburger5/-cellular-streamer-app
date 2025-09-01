@@ -7,6 +7,7 @@ import type { ServerHealth } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader, CheckCircle, XCircle, AlertTriangle, ShieldCheck, ShieldAlert, Server } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 function HealthCheckItem({ label, success, description }: { label: string, success: boolean, description?: string | null }) {
     return (
