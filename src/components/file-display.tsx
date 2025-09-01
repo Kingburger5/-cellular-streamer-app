@@ -9,6 +9,7 @@ import { DataVisualizer } from "./data-visualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SummaryViewer } from "./summary-viewer";
 import { getDownloadUrlAction } from "@/app/actions";
+import { downloadFile } from "@/lib/downloadFile";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState, useTransition } from "react";
 import { Button } from "./ui/button";
@@ -53,20 +54,8 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
     startDownloadTransition(async () => {
         toast({ title: `Preparing '${fileName}' for download...` });
         try {
-            // Ask the server for a signed URL
             const url = await getDownloadUrlAction(fileName);
-
-            // Create a hidden <a> element
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = fileName; // Force browser to save as this name
-            document.body.appendChild(link);
-
-            // Simulate a click
-            link.click();
-
-            // Cleanup
-            document.body.removeChild(link);
+            await downloadFile(url, fileName);
             toast({ title: "Download started" });
         } catch (err) {
             console.error("Download failed:", err);

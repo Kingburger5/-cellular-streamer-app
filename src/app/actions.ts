@@ -157,7 +157,7 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string) {
-  const bucket = adminStorage.bucket("cellular-data-streamer.firebasestorage.app");
+  const bucket = adminStorage.bucket(BUCKET_NAME);
   const file = bucket.file(`uploads/${fileName}`);
 
   // Generate a signed URL valid for 15 minutes that forces a download
