@@ -25,28 +25,17 @@ function initializeFirebaseAdmin() {
             throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set. This is required for server-side operations.");
         }
         
-        let serviceAccount: ServiceAccount;
-        try {
-            // First, try to parse the string directly. This should work in most cases.
-            serviceAccount = JSON.parse(serviceAccountString);
-        } catch (e) {
-            // If parsing fails, it might be due to extra quotes or escaping issues.
-            console.log("[SERVER_INFO] Direct JSON parsing failed. Attempting to clean string before parsing again.");
-            const cleanedString = serviceAccountString.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\\\n/g, '\\n');
-            try {
-                 serviceAccount = JSON.parse(cleanedString);
-            } catch (finalError) {
-                 console.error("[CRITICAL] Final JSON parsing attempt failed after cleaning the string.");
-                 throw new Error(`Failed to parse service account JSON after cleaning. Original error: ${(e as Error).message}`);
-            }
-        }
+        // The service account string from the secret manager is already a JSON object.
+        // We parse it into a ServiceAccount object.
+        const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
 
         // **CRITICAL FIX for "Invalid PEM formatted message" error**
-        // Un-escape the newline characters in the private key.
+        // The `private_key` from the environment variable often has its newlines
+        // escaped (e.g., "\\n"). We must replace them with actual newlines ("\n")
+        // for the PEM key to be valid.
         if (serviceAccount.private_key) {
             serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
         }
-
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
@@ -56,7 +45,8 @@ function initializeFirebaseAdmin() {
 
     } catch (error: any) {
         console.error("[CRITICAL] Firebase Admin SDK initialization error:", error);
-        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Error: ${error.message}`);
+        // Include the original error message for better debugging.
+        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Original Error: ${error.message}`);
     }
 
     return { adminApp, adminStorage: adminStorage! };
