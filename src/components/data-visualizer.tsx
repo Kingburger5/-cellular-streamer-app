@@ -8,7 +8,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Thermometer, Send, FileWarning, AlertTriangle, RadioTower, Zap, HardDrive, Loader, MapPin, Calendar, Clock } from 'lucide-react';
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { syncToSheetAction } from '@/app/actions';
 import { useState, useTransition } from 'react';
 
 export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[] | null, fileName: string, isLoading: boolean }) {
@@ -19,7 +18,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-4 text-center">
             <Loader className="w-12 h-12 mb-4 animate-spin" />
             <h3 className="font-semibold">Analyzing Data...</h3>
-            <p className="text-sm">The AI is extracting structured data and updating your records.</p>
+            <p className="text-sm">The AI is extracting structured data from the file's metadata.</p>
         </div>
     );
   }

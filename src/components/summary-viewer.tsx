@@ -13,10 +13,15 @@ export function SummaryViewer({ fileContent }: { fileContent: FileContent }) {
 
     useEffect(() => {
         const getSummary = async () => {
+            if (!fileContent.rawMetadata) {
+                setSummary("No metadata available to generate a summary.");
+                setIsLoading(false);
+                return;
+            }
             setIsLoading(true);
             try {
                 // Use rawMetadata for summary if available, otherwise use content.
-                const contentToSummarize = fileContent.rawMetadata || fileContent.content;
+                const contentToSummarize = fileContent.rawMetadata;
                 const result = await summarizeFile({
                     fileContent: contentToSummarize,
                     filename: fileContent.name,
