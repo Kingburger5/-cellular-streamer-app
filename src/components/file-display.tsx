@@ -4,13 +4,14 @@
 import type { FileContent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "./ui/badge";
-import { ServerCrash, FileSearch, Loader } from "lucide-react";
+import { ServerCrash, FileSearch, Loader, Download } from "lucide-react";
 import { DataVisualizer } from "./data-visualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SummaryViewer } from "./summary-viewer";
 import { getDownloadUrlAction } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { Button } from "./ui/button";
 
 interface FileDisplayProps {
   fileContent: FileContent | null;
@@ -22,6 +23,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
   const { toast } = useToast();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState<boolean>(false);
+  const [isDownloading, startDownloadTransition] = useTransition();
 
   // Reset audio URL when the selected file changes
   useEffect(() => {
@@ -47,6 +49,27 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
         setIsAudioLoading(false);
       }
     }
+  };
+
+  const handleDownloadFile = async () => {
+    if (!fileContent) return;
+    startDownloadTransition(async () => {
+        toast({ title: `Preparing '${fileContent.name}' for download...` });
+        const result = await getDownloadUrlAction(fileContent.name);
+        if ('url' in result) {
+            // Create a temporary link to trigger the download
+            const link = document.createElement('a');
+            link.href = result.url;
+            link.target = "_blank"; // Open in new tab to avoid navigation issues
+            link.download = fileContent.name; // This attribute is not always respected but good to have
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            toast({ title: "Download started" });
+        } else {
+            toast({ title: "Download Failed", description: result.error, variant: "destructive" });
+        }
+    });
   };
 
 
@@ -100,7 +123,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
   return (
     <Card className="h-full flex flex-col">
       <CardHeader>
-        <div className="flex justify-between items-start">
+        <div className="flex justify-between items-start gap-4">
             <div className="flex-1 min-w-0">
                 <CardTitle className="font-headline flex items-center gap-2">
                   <span className="truncate">{fileContent.name}</span>
@@ -108,6 +131,10 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
                 </CardTitle>
                 <CardDescription>File from persistent storage. Select a tab to view details.</CardDescription>
             </div>
+            <Button variant="outline" size="sm" onClick={handleDownloadFile} disabled={isDownloading}>
+                <Download className="mr-2" />
+                {isDownloading ? "Preparing..." : "Download"}
+            </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-grow h-0">

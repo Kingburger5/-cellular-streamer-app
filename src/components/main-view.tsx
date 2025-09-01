@@ -3,7 +3,7 @@
 
 import { useState, useTransition, useCallback, useEffect } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
-import { deleteFileAction, processFileAction, getDownloadUrlAction } from "@/app/actions";
+import { deleteFileAction, processFileAction } from "@/app/actions";
 import { getClientFiles, clientStorage } from "@/lib/firebase-client";
 import { ref, getBlob } from "firebase/storage";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
@@ -186,24 +186,6 @@ export function MainView({ initialFiles }: MainViewProps) {
      });
   }, [toast, refreshFileList]);
 
-  const handleDownloadFile = useCallback(async (name: string) => {
-    toast({ title: `Preparing '${name}' for download...` });
-    const result = await getDownloadUrlAction(name);
-    if ('url' in result) {
-      // Create a temporary link to trigger the download
-      const link = document.createElement('a');
-      link.href = result.url;
-      link.target = "_blank"; // Open in new tab to avoid navigation issues
-      link.download = name; // This attribute is not always respected but good to have
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast({ title: "Download started" });
-    } else {
-      toast({ title: "Download Failed", description: result.error, variant: "destructive" });
-    }
-  }, [toast]);
-
   return (
     <SidebarProvider>
       <Sidebar className="flex flex-col">
@@ -225,7 +207,6 @@ export function MainView({ initialFiles }: MainViewProps) {
             selectedFile={selectedFileName}
             onSelectFile={handleSelectFile}
             onDeleteFile={handleDeleteFile}
-            onDownloadFile={handleDownloadFile}
             isLoading={isFileListLoading}
           />
         )}

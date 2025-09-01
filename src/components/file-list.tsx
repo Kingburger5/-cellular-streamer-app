@@ -14,7 +14,7 @@ import {
   SidebarFooter,
   SidebarMenuSkeleton
 } from "@/components/ui/sidebar";
-import { Antenna, Trash2, Download } from "lucide-react";
+import { Antenna, Trash2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
 import {
   AlertDialog,
@@ -34,20 +34,14 @@ interface FileListProps {
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
   onDeleteFile: (name: string) => void;
-  onDownloadFile: (name: string) => void;
   isLoading: boolean;
 }
 
-export function FileList({ files, selectedFile, onSelectFile, onDeleteFile, onDownloadFile, isLoading }: FileListProps) {
+export function FileList({ files, selectedFile, onSelectFile, onDeleteFile, isLoading }: FileListProps) {
 
   const handleDelete = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
     onDeleteFile(filename);
-  }
-
-  const handleDownload = (e: React.MouseEvent, filename: string) => {
-    e.stopPropagation();
-    onDownloadFile(filename);
   }
 
   return (
@@ -88,9 +82,6 @@ export function FileList({ files, selectedFile, onSelectFile, onDeleteFile, onDo
               </SidebarMenuButton>
 
               <div className="flex items-center ml-auto pl-2">
-                 <SidebarMenuAction showOnHover onClick={(e) => handleDownload(e, file.name)}>
-                    <Download />
-                 </SidebarMenuAction>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                        <SidebarMenuAction showOnHover>
