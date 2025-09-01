@@ -146,7 +146,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucket = adminStorage.bucket(BUCKET_NAME);
+    const bucket = adminStorage.bucket("cellular-data-streamer.firebasestorage.app");
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
@@ -157,7 +157,7 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string) {
-  const bucket = adminStorage.bucket(BUCKET_NAME);
+  const bucket = adminStorage.bucket("cellular-data-streamer.firebasestorage.app");
   const file = bucket.file(`uploads/${fileName}`);
 
   // Generate a signed URL valid for 15 minutes that forces a download

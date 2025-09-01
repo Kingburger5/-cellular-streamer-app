@@ -108,7 +108,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
       defaultTab = "visualization";
   } else if (!hasRawMetadata && isBinary) {
       defaultTab = "audio";
-  } else if (!hasData && hasRawMetadata) {
+  } else if (hasRawMetadata) { // Show metadata tab if it exists, even if data extraction failed
       defaultTab = "metadata";
   }
 
@@ -174,7 +174,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
                   <Card className="h-full">
                       <CardHeader>
                           <CardTitle>Extracted Raw Metadata</CardTitle>
-                          <CardDescription>The raw text block found in the binary file.</CardDescription>
+                          <CardDescription>The raw text block found in the binary file. If this is empty, no metadata could be extracted.</CardDescription>
                       </CardHeader>
                       <CardContent>
                           {fileContent.rawMetadata ? (
