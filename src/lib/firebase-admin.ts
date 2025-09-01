@@ -8,29 +8,9 @@ let adminStorage: Storage;
 
 try {
     if (!getApps().length) {
-        // Attempt to build credentials from environment variables set in App Hosting secrets.
-        // This is the most robust method when automatic discovery fails.
-        const projectId = process.env.FIREBASE_PROJECT_ID;
-        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        // The private key from secrets comes with escaped newlines, which need to be un-escaped for the cert object.
-        const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-
-        if (!projectId || !clientEmail || !privateKey) {
-            // This error will be visible in the Cloud Logging for the backend.
-            throw new Error("Missing required Firebase Admin credentials from environment variables (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY). Please ensure these secrets are set in your App Hosting backend settings.");
-        }
-
-        const serviceAccount: ServiceAccount = {
-            projectId,
-            clientEmail,
-            privateKey,
-        };
-
-        const appOptions: AppOptions = {
-            credential: cert(serviceAccount),
-        };
-
-        adminApp = initializeApp(appOptions);
+        // This is the standard initialization that should be used in App Hosting.
+        // It relies on Application Default Credentials to be automatically discovered.
+        adminApp = initializeApp();
     } else {
         adminApp = getApps()[0];
     }
