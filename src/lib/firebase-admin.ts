@@ -5,7 +5,7 @@ import { ServiceAccount } from "firebase-admin";
 
 // Import the service account key from the new JSON file.
 // The `resolveJsonModule` and `esModuleInterop` in tsconfig.json allow this direct import.
-import serviceAccountCredentials from './service-account.json';
+import serviceAccountCredentials from '@/lib/service-account.json';
 
 let adminApp: App;
 let adminStorage: Storage;
