@@ -97,14 +97,14 @@ Your task is to parse this text and extract the relevant data points into a sing
 - From a key-value pair like 'Model:Song Meter Mini Bat', extract 'Song Meter Mini Bat' for the 'model' field.
 - From a key-value pair like 'Serial:SMU06612', extract 'SMU06612' for the 'serial' field.
 - Extract 'Firmware Version' as 'firmwareVersion'.
-- The 'Audio settings' field is a JSON string within an array. You must parse it and extract the following fields:
-  - 'gain' as 'gain'
-  - 'trig window' as 'triggerWindow'
-  - 'trig max len' as 'triggerMaxLen'
-  - 'trig min freq' as 'minTriggerFreq'
-  - 'trig max freq' as 'maxTriggerFreq'
-  - 'trig min dur' as 'triggerMinDur'
-  - 'trig max dur' as 'triggerMaxDur'
+- **CRITICAL**: The 'Audio settings' field contains a JSON string inside an array. You MUST parse this JSON to extract the following values:
+  - The value of "gain" from the JSON should be extracted to the 'gain' field.
+  - The value of "trig window" from the JSON should be extracted to the 'triggerWindow' field.
+  - The value of "trig max len" from the JSON should be extracted to the 'triggerMaxLen' field.
+  - The value of "trig min freq" from the JSON should be extracted to the 'minTriggerFreq' field.
+  - The value of "trig max freq" from the JSON should be extracted to the 'maxTriggerFreq' field.
+  - The value of "trig min dur" from the JSON should be extracted to the 'triggerMinDur' field.
+  - The value of "trig max dur" from the JSON should be extracted to the 'triggerMaxDur' field.
 - If a field is not present in the text, you should omit it from the output for that data point.
 - If no parsable data is found, return an empty array for the 'data' field.
 
@@ -154,3 +154,5 @@ const extractDataFlow = ai.defineFlow(
     return output!;
   }
 );
+
+    
