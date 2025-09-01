@@ -94,12 +94,17 @@ export async function processFileAction(
         const adminStorage = getAdminStorage();
         const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
-        const [metadata] = await file.getMetadata();
+
+        const [exists] = await file.exists();
+        if (!exists) {
+            return { error: `File not found in storage: ${filename}` };
+        }
+
+        const [fileBuffer] = await file.download();
+        console.log(`[SERVER_INFO] Successfully downloaded ${filename} from Firebase Storage.`);
 
         const extension = filename.split('.').pop()?.toLowerCase() || '';
         const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
-
-        const [fileBuffer] = await file.download();
 
         if (isBinary) {
             // For binary files, look for metadata in the whole file
