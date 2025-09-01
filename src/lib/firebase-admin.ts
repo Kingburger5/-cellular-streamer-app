@@ -39,7 +39,7 @@ function initializeFirebaseAdmin() {
             } catch (finalError) {
                  console.error("[CRITICAL] Final JSON parsing attempt failed after cleaning the string.");
                  // Throw the original, more informative error to avoid masking the root cause.
-                 throw e;
+                 throw new Error(`Failed to parse service account JSON after cleaning. Original error: ${(e as Error).message}`);
             }
         }
 
