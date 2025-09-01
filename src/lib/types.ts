@@ -11,12 +11,12 @@ export interface DataPoint {
   surveyDate?: string; // Format: YYYY-MM-DD
   surveyFinishTime?: string; // Format: HH:MM:SS
 
-  // Original fields
+  // Original fields from GUANO
   timestamp: string;
   latitude: number;
   longitude: number;
   temperature: number;
-  length?: number; // Added to calculate finish time
+  length?: number; 
   flybys?: number;
   sampleRate?: number;
   minTriggerFreq?: number;
@@ -24,6 +24,14 @@ export interface DataPoint {
   make?: string;
   model?: string;
   serial?: string;
+  
+  // Expanded GUANO fields
+  firmwareVersion?: string;
+  gain?: number;
+  triggerWindow?: number;
+  triggerMaxLen?: number;
+  triggerMinDur?: number;
+  triggerMaxDur?: number;
 }
 
 export interface FileContent {
