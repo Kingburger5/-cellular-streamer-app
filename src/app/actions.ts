@@ -3,60 +3,7 @@
 
 import { adminStorage } from "@/lib/firebase-admin";
 import { extractData } from "@/ai/flows/extract-data-flow";
-import type { UploadedFile, FileContent, DataPoint, ServerHealth } from "@/lib/types";
-import { GoogleAuth } from 'google-auth-library';
-
-
-export async function getServerHealthAction(): Promise<ServerHealth> {
-    const health: ServerHealth = {
-        canInitializeAdmin: false,
-        hasProjectId: false,
-        hasClientEmail: false,
-        hasPrivateKey: false,
-        canFetchAccessToken: false,
-        accessTokenError: null,
-        projectId: null,
-        detectedClientEmail: null,
-    };
-
-    try {
-        const auth = new GoogleAuth();
-        const client = await auth.getClient();
-        
-        health.canInitializeAdmin = true; // If we get this far, the basic lib is working.
-
-        // @ts-ignore
-        const credentials = client.credentials;
-        
-        if (credentials) {
-            if (credentials.project_id) {
-                health.hasProjectId = true;
-                health.projectId = credentials.project_id;
-            }
-            if (credentials.client_email) {
-                health.hasClientEmail = true;
-                health.detectedClientEmail = credentials.client_email;
-            }
-            if (credentials.private_key) {
-                health.hasPrivateKey = true;
-            }
-        }
-        
-        try {
-            const token = await auth.getAccessToken();
-            if (token) {
-                health.canFetchAccessToken = true;
-            }
-        } catch (tokenError: any) {
-            health.accessTokenError = tokenError.message;
-        }
-
-    } catch (error: any) {
-        health.accessTokenError = `Failed to initialize GoogleAuth client: ${error.message}`;
-    }
-
-    return health;
-}
+import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 
 // This function is no longer called by the main view but is kept for potential future server-side needs.
@@ -143,7 +90,7 @@ export async function processFileAction(
         console.log(`[SERVER_INFO] Step 1 Success: Successfully downloaded ${fileBuffer.byteLength} bytes.`);
     } catch (error: any) {
         console.error(`[SERVER_ERROR] Step 1 Failed: Could not download file '${filename}' from Firebase Storage. Full Error:`, error);
-        return { error: `Failed to download file from storage. See server logs for details. Code: ${error.code}` };
+        return { error: `Failed to download file from storage. Server logs may have more details. Ensure Firebase credentials are set correctly. Error code: ${error.code}` };
     }
 
     try {
@@ -232,8 +179,8 @@ export async function getDownloadUrlAction(filename: string): Promise<{ url: str
         const message = error instanceof Error ? error.message : "An unknown error occurred.";
         console.error(`[SERVER_ERROR] Failed to get download URL for ${filename}:`, error);
         // Provide a more specific error message based on the likely cause.
-        if (message.includes("client_email")) {
-             return { error: `Server-side authentication failed: Could not find credentials to sign the URL. Please check server logs and IAM permissions for the App Hosting service account. Full error: ${message}` };
+        if (message.includes("client_email") || message.includes("credentials")) {
+             return { error: `Server-side authentication failed: Could not find or use credentials to sign the URL. Please ensure FIREBASE_ environment variables are set correctly in your backend's secrets. Full error: ${message}` };
         }
         return { error: `Server-side download link generation failed: ${message}. Check logs and IAM permissions.` };
     }

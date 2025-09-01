@@ -16,7 +16,6 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { DebugLogViewer } from "./debug-log-viewer";
-import { ServerHealthViewer } from "./server-health-viewer";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Terminal } from "lucide-react";
 
@@ -175,7 +174,6 @@ export function MainView({ initialFiles }: MainViewProps) {
                 <TabsList>
                     <TabsTrigger value="main">File Viewer</TabsTrigger>
                     <TabsTrigger value="logs">Connection Log</TabsTrigger>
-                    <TabsTrigger value="health">Server Health</TabsTrigger>
                 </TabsList>
             </div>
             <TabsContent value="main" className="flex-grow h-0 mt-4">
@@ -187,9 +185,6 @@ export function MainView({ initialFiles }: MainViewProps) {
             </TabsContent>
             <TabsContent value="logs" className="flex-grow h-0 mt-4">
                 <DebugLogViewer />
-            </TabsContent>
-            <TabsContent value="health" className="flex-grow h-0 mt-4">
-                <ServerHealthViewer />
             </TabsContent>
         </Tabs>
       </SidebarInset>
