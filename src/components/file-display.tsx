@@ -8,6 +8,9 @@ import { ServerCrash, FileSearch, Loader } from "lucide-react";
 import { DataVisualizer } from "./data-visualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SummaryViewer } from "./summary-viewer";
+import { getDownloadUrlAction } from "@/app/actions";
+import { useToast } from "@/hooks/use-toast";
+import { useEffect, useState } from "react";
 
 interface FileDisplayProps {
   fileContent: FileContent | null;
@@ -16,6 +19,36 @@ interface FileDisplayProps {
 }
 
 export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps) {
+  const { toast } = useToast();
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isAudioLoading, setIsAudioLoading] = useState<boolean>(false);
+
+  // Reset audio URL when the selected file changes
+  useEffect(() => {
+    setAudioUrl(null);
+  }, [fileContent?.name]);
+
+  const handleTabChange = async (tabValue: string) => {
+    if (tabValue === "audio" && fileContent?.isBinary && !audioUrl && !isAudioLoading) {
+      setIsAudioLoading(true);
+      toast({ title: "Generating secure download link for audio..." });
+      try {
+        const result = await getDownloadUrlAction(fileContent.name);
+        if ("url" in result) {
+          setAudioUrl(result.url);
+          toast({ title: "Audio ready for playback." });
+        } else {
+          toast({ title: "Error", description: result.error, variant: "destructive" });
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "An unknown error occurred.";
+        toast({ title: "Failed to get audio URL", description: message, variant: "destructive" });
+      } finally {
+        setIsAudioLoading(false);
+      }
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -48,18 +81,16 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
     );
   }
   
-  const audioSrc = fileContent.isBinary ? fileContent.content : undefined;
+  const isBinary = fileContent.isBinary;
   const hasRawMetadata = !!fileContent.rawMetadata;
   const hasData = !!fileContent.extractedData && fileContent.extractedData.length > 0;
   
-  // The data is loading if the AI analysis hasn't populated the extractedData field yet.
   const isDataLoading = fileContent.rawMetadata ? !fileContent.extractedData : false;
 
-  // Determine the best default tab to show.
   let defaultTab = "summary";
   if (hasData) {
       defaultTab = "visualization";
-  } else if (!hasRawMetadata && audioSrc) {
+  } else if (!hasRawMetadata && isBinary) {
       defaultTab = "audio";
   } else if (!hasData && hasRawMetadata) {
       defaultTab = "metadata";
@@ -80,11 +111,11 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
         </div>
       </CardHeader>
       <CardContent className="flex-grow h-0">
-          <Tabs defaultValue={defaultTab} className="h-full flex flex-col">
+          <Tabs defaultValue={defaultTab} className="h-full flex flex-col" onValueChange={handleTabChange}>
               <TabsList className="shrink-0">
                   <TabsTrigger value="summary" disabled={!hasRawMetadata}>AI Summary</TabsTrigger>
                   <TabsTrigger value="visualization" disabled={!hasRawMetadata}>Data Visualization</TabsTrigger>
-                  <TabsTrigger value="audio" disabled={!audioSrc}>Audio Playback</TabsTrigger>
+                  <TabsTrigger value="audio" disabled={!isBinary}>Audio Playback</TabsTrigger>
                   <TabsTrigger value="metadata" disabled={!hasRawMetadata}>Raw Metadata</TabsTrigger>
               </TabsList>
               <TabsContent value="summary" className="flex-grow h-0 mt-4">
@@ -99,13 +130,23 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
                           <CardTitle>Audio Playback</CardTitle>
                       </CardHeader>
                       <CardContent>
-                          {audioSrc ? (
-                              <audio controls src={audioSrc} className="w-full">
+                          {isAudioLoading && (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Loader className="w-4 h-4 animate-spin" />
+                              <span>Preparing audio...</span>
+                            </div>
+                          )}
+                          {audioUrl && (
+                              <audio controls src={audioUrl} className="w-full" autoPlay>
                                   Your browser does not support the audio element.
                               </audio>
-                          ) : (
-                              <p className="text-muted-foreground">No audio available for this file type.</p>
                           )}
+                           {!audioUrl && !isAudioLoading && isBinary && (
+                              <p className="text-muted-foreground">Audio will be loaded on demand. Click this tab again if needed.</p>
+                           )}
+                           {!isBinary && (
+                                <p className="text-muted-foreground">No audio available for this file type.</p>
+                           )}
                       </CardContent>
                   </Card>
               </TabsContent>
