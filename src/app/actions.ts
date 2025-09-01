@@ -1,7 +1,7 @@
 
 "use server";
 
-import { adminStorage } from "@/lib/firebase-admin";
+import { getAdminStorage } from "@/lib/firebase-admin";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 import { extractData } from "@/ai/flows/extract-data-flow";
 
@@ -9,6 +9,7 @@ const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
+        const adminStorage = getAdminStorage();
         const bucket = adminStorage.bucket(BUCKET_NAME);
         const [files] = await bucket.getFiles({ prefix: "uploads/"});
 
@@ -90,6 +91,7 @@ export async function processFileAction(
     try {
         console.log(`[SERVER_INFO] Step 1 Started: Processing '${filename}' on the server.`);
         
+        const adminStorage = getAdminStorage();
         const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(`uploads/${filename}`);
         const [metadata] = await file.getMetadata();
@@ -148,6 +150,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
+    const adminStorage = getAdminStorage();
     const bucket = adminStorage.bucket(BUCKET_NAME);
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
@@ -159,6 +162,7 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string) {
+  const adminStorage = getAdminStorage();
   const bucket = adminStorage.bucket(BUCKET_NAME);
   const file = bucket.file(`uploads/${fileName}`);
 

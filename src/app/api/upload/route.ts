@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
-import { adminStorage } from "@/lib/firebase-admin";
+import { getAdminStorage } from "@/lib/firebase-admin";
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
         const originalFilename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
         const filePath = `uploads/${originalFilename}`;
         
+        const adminStorage = getAdminStorage();
         const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(filePath);
 

@@ -3,16 +3,22 @@ import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 import { ServiceAccount } from "firebase-admin";
 
-let adminApp: App;
-let adminStorage: Storage;
+let adminApp: App | null = null;
+let adminStorage: Storage | null = null;
 
-try {
-    if (!getApps().length) {
-        // Attempt to parse the service account from the environment variable.
-        // This is a more secure and build-friendly approach than importing a JSON file.
+function initializeFirebaseAdmin() {
+    if (getApps().length) {
+        if (!adminApp) {
+           adminApp = getApps()[0];
+           adminStorage = getStorage(adminApp);
+        }
+        return { adminApp, adminStorage: adminStorage! };
+    }
+
+    try {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         if (!serviceAccountString) {
-            throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set. Please add it to your .env file.");
+            throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set.");
         }
         
         const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
@@ -20,17 +26,21 @@ try {
         adminApp = initializeApp({
             credential: cert(serviceAccount),
         });
+        adminStorage = getStorage(adminApp);
 
-    } else {
-        adminApp = getApps()[0];
+    } catch (error: any) {
+        console.error("[CRITICAL] Firebase Admin SDK initialization error:", error.message);
+        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Error: ${error.message}`);
     }
-} catch (error: any) {
-    console.error("[CRITICAL] Firebase Admin SDK initialization error:", error.message);
-    // This error is critical and indicates a problem with the environment setup.
-    // It will cause the backend to fail to start, and the error will be in the logs.
-    throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Error: ${error.message}`);
+
+    return { adminApp, adminStorage: adminStorage! };
 }
 
-adminStorage = getStorage(adminApp);
+function getAdminStorage(): Storage {
+    if (!adminStorage) {
+        initializeFirebaseAdmin();
+    }
+    return adminStorage!;
+}
 
-export { adminApp, adminStorage };
+export { getAdminStorage };
