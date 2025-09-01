@@ -4,6 +4,10 @@
 # Explicitly set a backend ID to conform to naming requirements (lowercase, digits, hyphens).
 backend:
   id: my-app
+  secrets:
+    # Mount the service account key from Secret Manager as an environment variable
+    # This is a secure way to provide credentials to your application.
+    - secret: GOOGLE_APPLICATION_CREDENTIALS_JSON
 
 runConfig:
   # Increase this value if you'd like to automatically spin up
