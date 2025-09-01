@@ -38,8 +38,6 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 
 async function findGuanoMetadata(file: import("firebase-admin/storage").File): Promise<string | null> {
     try {
-        // Assume the GUANO chunk is within the last 1MB of the file.
-        // This is a reasonable assumption for many file formats.
         const [metadata] = await file.getMetadata();
         const fileSize = Number(metadata.size) || 0;
         
@@ -49,10 +47,12 @@ async function findGuanoMetadata(file: import("firebase-admin/storage").File): P
         }
 
         const rangeStart = Math.max(0, fileSize - 1024 * 1024); // Last 1MB
+        const rangeEnd = fileSize - 1; // Read to the end of the file
 
-        console.log(`[SERVER_INFO] Searching for GUANO. File size: ${fileSize}, download range: ${rangeStart}-${fileSize - 1}`);
+        console.log(`[SERVER_INFO] Searching for GUANO. File size: ${fileSize}, download range: ${rangeStart}-${rangeEnd}`);
 
-        const [buffer] = await file.download({ start: rangeStart });
+        // Download only the specified range of the file.
+        const [buffer] = await file.download({ start: rangeStart, end: rangeEnd });
         
         const guanoKeyword = Buffer.from("GUANO");
         const guanoIndex = buffer.indexOf(guanoKeyword);
@@ -69,11 +69,19 @@ async function findGuanoMetadata(file: import("firebase-admin/storage").File): P
         }
 
         const chunkLength = buffer.readUInt32LE(lengthOffset);
+        
+        // Ensure the chunk length is reasonable to avoid reading garbage data
+        if (chunkLength > buffer.length - guanoIndex || chunkLength <= 0) {
+            console.log(`DEBUG: Invalid metadata chunk length (${chunkLength}) found.`);
+            return null;
+        }
+
         const metadataStart = guanoIndex;
         const metadataEnd = metadataStart + chunkLength;
 
         if (metadataEnd > buffer.length) {
-            console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size (${buffer.length}).`);
+            console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size (${buffer.length}). This can happen if the GUANO block is fragmented at the edge of the downloaded range.`);
+            // This is a limitation of the current approach. For a full solution, one might need to re-download a larger chunk.
             return null;
         }
 
