@@ -42,11 +42,17 @@ async function findGuanoMetadata(file: import("firebase-admin/storage").File): P
         // This is a reasonable assumption for many file formats.
         const [metadata] = await file.getMetadata();
         const fileSize = Number(metadata.size) || 0;
+        
+        if (fileSize === 0) {
+            console.log(`[SERVER_INFO] Skipping GUANO search for empty file: ${file.name}`);
+            return null;
+        }
+
         const rangeStart = Math.max(0, fileSize - 1024 * 1024); // Last 1MB
 
-        console.log(`[SERVER_INFO] Searching for GUANO. File size: ${fileSize}, download range: ${rangeStart}-${fileSize}`);
+        console.log(`[SERVER_INFO] Searching for GUANO. File size: ${fileSize}, download range: ${rangeStart}-${fileSize - 1}`);
 
-        const [buffer] = await file.download({ start: rangeStart, end: fileSize });
+        const [buffer] = await file.download({ start: rangeStart });
         
         const guanoKeyword = Buffer.from("GUANO");
         const guanoIndex = buffer.indexOf(guanoKeyword);
@@ -182,7 +188,7 @@ export async function getDownloadUrlAction(filename: string): Promise<{ url: str
         console.error(`[SERVER_ERROR] Failed to get download URL for ${filename}:`, error);
         // Provide a more specific error message based on the likely cause.
         if (message.includes("client_email") || message.includes("credentials")) {
-             return { error: `Server-side authentication failed: Could not find or use credentials to sign the URL. Please ensure FIREBASE_ environment variables are set correctly in your backend's secrets. Full error: ${message}` };
+             return { error: `Server-side authentication failed: Could not find or use credentials to sign the URL. Please ensure your service account has 'Service Account Token Creator' role. Full error: ${message}` };
         }
         return { error: `Server-side download link generation failed: ${message}. Check logs and IAM permissions.` };
     }
