@@ -77,7 +77,8 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
     const fileDetails = await Promise.all(
       res.items.map(async (itemRef) => {
         const metadata = await getMetadata(itemRef);
-        // We need to return just the filename, not the full path.
+        // Use `itemRef.name` to get just the filename (e.g., "file.wav")
+        // `itemRef.fullPath` would be "uploads/file.wav"
         const name = itemRef.name;
         return {
           name: name,
