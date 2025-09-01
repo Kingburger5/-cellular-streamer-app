@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { format } from 'date-fns';
 import { adminStorage } from "@/lib/firebase-admin";
 
+const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
+
 async function logRequestToSheet(request: NextRequest) {
     // This functionality has been temporarily disabled.
     console.log("Google Sheets logging is disabled.");
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
         const originalFilename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
         const filePath = `uploads/${originalFilename}`;
         
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(filePath);
 
         await file.save(Buffer.from(fileBuffer), {

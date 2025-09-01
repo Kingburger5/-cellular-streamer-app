@@ -5,11 +5,12 @@ import { adminStorage } from "@/lib/firebase-admin";
 import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
+const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
 // This function is no longer called by the main view but is kept for potential future server-side needs.
 export async function getFilesAction(): Promise<UploadedFile[]> {
     try {
-        const bucket = adminStorage.bucket();
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const [files] = await bucket.getFiles({ prefix: "uploads/"});
 
         const fileDetails = await Promise.all(
@@ -145,7 +146,7 @@ export async function deleteFileAction(
   filename: string
 ): Promise<{ success: true } | { error: string }> {
   try {
-    const bucket = adminStorage.bucket();
+    const bucket = adminStorage.bucket(BUCKET_NAME);
     await bucket.file(`uploads/${filename}`).delete();
     return { success: true };
   } catch (error) {
@@ -156,7 +157,7 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string) {
-  const bucket = adminStorage.bucket();
+  const bucket = adminStorage.bucket(BUCKET_NAME);
   const file = bucket.file(`uploads/${fileName}`);
 
   // Generate a signed URL valid for 15 minutes

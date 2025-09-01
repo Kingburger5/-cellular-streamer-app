@@ -17,7 +17,8 @@ try {
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
-            storageBucket: `cellular-data-streamer.firebasestorage.app`
+            // The default bucket name is no longer needed here,
+            // as we will specify it explicitly in each action.
         });
 
     } else {
