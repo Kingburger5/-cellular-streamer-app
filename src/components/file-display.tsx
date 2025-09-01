@@ -22,7 +22,7 @@ interface FileDisplayProps {
 export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps) {
   const { toast } = useToast();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [isAudioLoading, setIsAudioLoading] = useState<boolean>(false);
+  const [isAudioLoading, startAudioTransition] = useTransition();
   const [isDownloading, startDownloadTransition] = useTransition();
 
   // Reset audio URL when the selected file changes
@@ -31,43 +31,47 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
   }, [fileContent?.name]);
 
   const handleTabChange = async (tabValue: string) => {
-    if (tabValue === "audio" && fileContent?.isBinary && !audioUrl && !isAudioLoading) {
-      setIsAudioLoading(true);
-      toast({ title: "Generating secure download link for audio..." });
-      try {
-        const result = await getDownloadUrlAction(fileContent.name);
-        if ("url" in result) {
-          setAudioUrl(result.url);
-          toast({ title: "Audio ready for playback." });
-        } else {
-          toast({ title: "Error", description: result.error, variant: "destructive" });
-        }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "An unknown error occurred.";
-        toast({ title: "Failed to get audio URL", description: message, variant: "destructive" });
-      } finally {
-        setIsAudioLoading(false);
-      }
+    if (tabValue === "audio" && fileContent?.isBinary && !audioUrl) {
+      startAudioTransition(async () => {
+          toast({ title: "Generating secure download link for audio..." });
+          try {
+            const url = await getDownloadUrlAction(fileContent.name);
+            setAudioUrl(url);
+            toast({ title: "Audio ready for playback." });
+          } catch (e) {
+            const message = e instanceof Error ? e.message : "An unknown error occurred.";
+            toast({ title: "Failed to get audio URL", description: message, variant: "destructive" });
+          }
+      });
     }
   };
 
   const handleDownloadFile = async () => {
-    if (!fileContent) return;
+    if (!fileContent?.name) return;
+    const fileName = fileContent.name;
+
     startDownloadTransition(async () => {
-        toast({ title: `Preparing '${fileContent.name}' for download...` });
-        const result = await getDownloadUrlAction(fileContent.name);
-        if ('url' in result) {
-            // Create a temporary link to trigger the download
-            const link = document.createElement('a');
-            link.href = result.url;
-            link.target = "_blank"; // Open in new tab to avoid navigation issues
-            link.download = fileContent.name; // This attribute is not always respected but good to have
+        toast({ title: `Preparing '${fileName}' for download...` });
+        try {
+            // Ask the server for a signed URL
+            const url = await getDownloadUrlAction(fileName);
+
+            // Create a hidden <a> element
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName; // optional: force download with filename
             document.body.appendChild(link);
+
+            // Simulate a click
             link.click();
+
+            // Cleanup
             document.body.removeChild(link);
             toast({ title: "Download started" });
-        } else {
-            toast({ title: "Download Failed", description: result.error, variant: "destructive" });
+        } catch (err) {
+            console.error("Download failed:", err);
+            const message = err instanceof Error ? err.message : "An unknown error occurred.";
+            toast({ title: "Download Failed", description: message, variant: "destructive" });
         }
     });
   };
