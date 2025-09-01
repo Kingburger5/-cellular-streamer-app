@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, FirebaseApp } from "firebase/app";
 import { getStorage, ref, listAll, getMetadata } from "firebase/storage";
-import { getAuth, signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
+import { getAuth, signInAnonymously, User } from "firebase/auth";
 import type { UploadedFile } from "./types";
 
 const firebaseConfig = {
@@ -24,25 +24,22 @@ if (!getApps().length) {
 const storage = getStorage(app);
 const auth = getAuth(app);
 
-// A promise that resolves when the user is signed in.
-let signInPromise: Promise<User | null> | null = null;
 
-// Helper function to ensure user is signed in
-const ensureSignIn = (): Promise<User | null> => {
-  if (!signInPromise) {
-    if (auth.currentUser) {
-       signInPromise = Promise.resolve(auth.currentUser);
-    } else {
-       signInPromise = signInAnonymously(auth).then(cred => cred.user);
-    }
+// Helper function to ensure user is signed in. This is now more direct.
+const ensureSignIn = async (): Promise<User> => {
+  if (auth.currentUser) {
+    return auth.currentUser;
   }
-  return signInPromise;
+  // If no user, sign in and return the user from the credential.
+  const userCredential = await signInAnonymously(auth);
+  return userCredential.user;
 };
 
 
 export async function getClientFiles(): Promise<UploadedFile[]> {
   try {
-    await ensureSignIn(); // Make sure we are authenticated before making a request
+    // Await ensures we are fully signed in before proceeding.
+    await ensureSignIn(); 
     
     const listRef = ref(storage, 'uploads');
     const res = await listAll(listRef);
@@ -50,11 +47,8 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
     const fileDetails = await Promise.all(
       res.items.map(async (itemRef) => {
         const metadata = await getMetadata(itemRef);
-        // Use `itemRef.name` to get just the filename (e.g., "file.wav")
-        // `itemRef.fullPath` would be "uploads/file.wav"
-        const name = itemRef.name;
         return {
-          name: name,
+          name: itemRef.name, // Use itemRef.name to get just the filename
           size: metadata.size,
           uploadDate: new Date(metadata.timeCreated),
         };
