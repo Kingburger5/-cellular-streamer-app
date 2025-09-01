@@ -59,7 +59,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
             // Create a hidden <a> element
             const link = document.createElement("a");
             link.href = url;
-            link.download = fileName; // optional: force download with filename
+            link.download = fileName; // Force browser to save as this name
             document.body.appendChild(link);
 
             // Simulate a click
