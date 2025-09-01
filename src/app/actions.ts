@@ -170,8 +170,11 @@ export async function getDownloadUrlAction(filename: string): Promise<{ url: str
         const message = error instanceof Error ? error.message : "An unknown error occurred.";
         console.error(`[SERVER_ERROR] Failed to get download URL for ${filename}:`, error);
         // Provide a more specific error message based on the likely cause.
-        if (message.includes("client_email") || message.includes("credentials")) {
-             return { error: `Server-side authentication failed: Could not find or use credentials to sign the URL. Please ensure your service account has 'Service Account Token Creator' role. Full error: ${message}` };
+        if (message.includes("client_email") || message.includes("credentials") || message.includes("does not have serviceusage.services.use access")) {
+             return { error: `Server-side authentication failed. Please ensure your service account has the 'Service Account Token Creator' role in IAM. Full error: ${message}` };
+        }
+        if (error.code === 404 || (message && message.toLowerCase().includes("not found"))) {
+            return { error: `File or Bucket not found on server. Ensure the file exists and the bucket name is correct in your configuration. Full error: ${message}`};
         }
         return { error: `Server-side download link generation failed: ${message}. Check logs and IAM permissions.` };
     }
