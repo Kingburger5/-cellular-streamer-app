@@ -24,46 +24,19 @@ if (!getApps().length) {
 const storage = getStorage(app);
 const auth = getAuth(app);
 
-// Helper function to ensure user is signed in
-let authReady: Promise<User | null>;
-let authResolved = false;
+// A promise that resolves when the user is signed in.
+let signInPromise: Promise<User | null> | null = null;
 
+// Helper function to ensure user is signed in
 const ensureSignIn = (): Promise<User | null> => {
-  if (!authReady) {
-    authReady = new Promise((resolve, reject) => {
-      // This listener will be called whenever the auth state changes.
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          if (!authResolved) {
-            authResolved = true;
-            resolve(user);
-          }
-          unsubscribe(); // Stop listening after we have a user.
-        } else if (!auth.currentUser && !authResolved) {
-          // If there's no user and we haven't already tried, sign in.
-          try {
-            await signInAnonymously(auth);
-            // The onAuthStateChanged listener will be triggered again with the new user.
-          } catch (error) {
-            console.error("Anonymous sign-in failed:", error);
-            if (!authResolved) {
-              authResolved = true;
-              reject(error);
-            }
-            unsubscribe();
-          }
-        }
-      }, (error) => {
-          console.error("Auth state change error:", error);
-          if (!authResolved) {
-            authResolved = true;
-            reject(error);
-          }
-          unsubscribe();
-      });
-    });
+  if (!signInPromise) {
+    if (auth.currentUser) {
+       signInPromise = Promise.resolve(auth.currentUser);
+    } else {
+       signInPromise = signInAnonymously(auth).then(cred => cred.user);
+    }
   }
-  return authReady;
+  return signInPromise;
 };
 
 
@@ -95,7 +68,10 @@ export async function getClientFiles(): Promise<UploadedFile[]> {
     if (error.code === 'storage/unauthorized' || error.code === 'storage/object-not-found') {
       throw new Error('Permission denied. Please check your Storage Security Rules in the Firebase Console to ensure read access is allowed for authenticated users in the `uploads` folder.');
     }
-    throw new Error("Could not fetch files from storage.");
+    if (error.code === 'storage/retry-limit-exceeded') {
+        throw new Error('Could not connect to Firebase Storage. Please check your network connection and try again.');
+    }
+    throw new Error(`Could not fetch files from storage. Error: ${error.message}`);
   }
 }
 
