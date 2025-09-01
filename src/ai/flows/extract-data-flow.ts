@@ -26,7 +26,7 @@ const DataPointSchema = z.object({
   minTriggerFreq: z.number().optional().describe('The minimum trigger frequency in Hz.'),
   maxTriggerFreq: z.number().optional().describe('The maximum trigger frequency in Hz.'),
   make: z.string().optional().describe('The make of the recording device (e.g., "Wildlife Acoustics, Inc.").'),
-  model: z.string().optional().describe('The model of the recording device (e A.g., "Song Meter Mini Bat").'),
+  model: z.string().optional().describe('The model of the recording device (e.g., "Song Meter Mini Bat").'),
   serial: z.string().optional().describe('The serial number of the recording device (e.g., "SMU06612").'),
   firmwareVersion: z.string().optional().describe("The firmware version of the device."),
   gain: z.number().optional().describe("The gain setting from the audio settings."),

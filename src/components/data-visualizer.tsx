@@ -155,7 +155,7 @@ export function DataVisualizer({ data, fileName, isLoading }: { data: DataPoint[
                  <div className="col-span-2"> <Separator /> </div>
                  
                  <p className="col-span-2 text-sm font-medium text-muted-foreground -mb-2">Trigger Details</p>
-                 <StatCard icon={<Clock/>} label="Window" value={latestData.triggerWindow} unit="s" />
+                 <StatCard icon={<Clock/>} label="Window" value={latestData.triggerWindow?.toFixed(1)} unit="s" />
                  <StatCard icon={<Clock/>} label="Max Length" value={latestData.triggerMaxLen} unit="s" />
                  <StatCard icon={<Zap/>} label="Min Frequency" value={formatHz(latestData.minTriggerFreq || 0)} />
                  <StatCard icon={<Zap/>} label="Max Frequency" value={formatHz(latestData.maxTriggerFreq || 0)} />
