@@ -99,19 +99,19 @@ export async function processFileAction(
         const extension = filename.split('.').pop()?.toLowerCase() || '';
         const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
 
-        const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB
-        const start = Math.max(0, Number(metadata.size) - CHUNK_SIZE);
-        const [fileBuffer] = await file.download({ start });
+        const [fileBuffer] = await file.download();
 
         if (isBinary) {
+            // For binary files, look for metadata in the whole file
             rawMetadata = findGuanoMetadataInChunk(fileBuffer);
              if (!rawMetadata) {
-                 console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file chunk '${filename}'.`);
+                 console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file '${filename}'.`);
             } else {
-                 console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block from chunk.`);
+                 console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block.`);
                  fileContentForClient = rawMetadata.replace(/\|/g, '\n'); 
             }
         } else {
+            // For text files, the whole content is the metadata
             rawMetadata = fileBuffer.toString('utf-8');
             fileContentForClient = rawMetadata;
             console.log(`[SERVER_INFO] Step 2 Success: Processed text file '${filename}'.`);
