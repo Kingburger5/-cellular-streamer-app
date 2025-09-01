@@ -132,7 +132,7 @@ GUANO|Version:1.0|Firmware Version:4.6|Make:Wildlife Acoustics, Inc.|Model:Song 
 - minTriggerFreq: 30000
 - maxTriggerFreq: 128000
 - triggerMinDur: 0.0015
-- triggerMaxDur: 0.0000
+- triggerMaxDur: 0.0
 - **DO NOT** calculate surveyDate or surveyFinishTime yourself. The system will do this.
 
 Now, please process the following content:
