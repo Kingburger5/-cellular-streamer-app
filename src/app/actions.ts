@@ -3,7 +3,61 @@
 
 import { adminStorage } from "@/lib/firebase-admin";
 import { extractData } from "@/ai/flows/extract-data-flow";
-import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
+import type { UploadedFile, FileContent, DataPoint, ServerHealth } from "@/lib/types";
+import { GoogleAuth } from 'google-auth-library';
+
+
+export async function getServerHealthAction(): Promise<ServerHealth> {
+    const health: ServerHealth = {
+        canInitializeAdmin: false,
+        hasProjectId: false,
+        hasClientEmail: false,
+        hasPrivateKey: false,
+        canFetchAccessToken: false,
+        accessTokenError: null,
+        projectId: null,
+        detectedClientEmail: null,
+    };
+
+    try {
+        const auth = new GoogleAuth();
+        const client = await auth.getClient();
+        
+        health.canInitializeAdmin = true; // If we get this far, the basic lib is working.
+
+        // @ts-ignore
+        const credentials = client.credentials;
+        
+        if (credentials) {
+            if (credentials.project_id) {
+                health.hasProjectId = true;
+                health.projectId = credentials.project_id;
+            }
+            if (credentials.client_email) {
+                health.hasClientEmail = true;
+                health.detectedClientEmail = credentials.client_email;
+            }
+            if (credentials.private_key) {
+                health.hasPrivateKey = true;
+            }
+        }
+        
+        try {
+            const token = await auth.getAccessToken();
+            if (token) {
+                health.canFetchAccessToken = true;
+            }
+        } catch (tokenError: any) {
+            health.accessTokenError = tokenError.message;
+        }
+
+    } catch (error: any) {
+        health.accessTokenError = `Failed to initialize GoogleAuth client: ${error.message}`;
+    }
+
+    return health;
+}
+
 
 // This function is no longer called by the main view but is kept for potential future server-side needs.
 export async function getFilesAction(): Promise<UploadedFile[]> {

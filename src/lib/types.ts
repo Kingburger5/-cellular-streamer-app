@@ -34,3 +34,14 @@ export interface FileContent {
   extractedData?: DataPoint[] | null;
   rawMetadata?: string | null;
 }
+
+export interface ServerHealth {
+    canInitializeAdmin: boolean;
+    hasProjectId: boolean;
+    hasClientEmail: boolean;
+    hasPrivateKey: boolean;
+    canFetchAccessToken: boolean;
+    accessTokenError: string | null;
+    projectId: string | null;
+    detectedClientEmail: string | null;
+}
