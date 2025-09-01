@@ -1,7 +1,7 @@
+
 "use server";
 
 import { adminStorage } from "@/lib/firebase-admin";
-import { extractData } from "@/ai/flows/extract-data-flow";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
@@ -38,27 +38,20 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 function findGuanoMetadataInChunk(chunk: Buffer): string | null {
     try {
         const guanoKeyword = Buffer.from("GUANO");
-        // GUANO spec says the metadata can be at the end of the file.
-        // We search from the end of the chunk backwards.
         const guanoIndex = chunk.lastIndexOf(guanoKeyword);
 
         if (guanoIndex === -1) {
-            console.log("DEBUG: GUANO keyword not found in the provided chunk.");
             return null;
         }
 
-        // GUANO spec states the 4 bytes *before* the keyword is the metadata length (UInt32LE).
         const lengthOffset = guanoIndex - 4;
         if (lengthOffset < 0) {
-            console.log("DEBUG: Not enough space for length before GUANO keyword.");
             return null;
         }
 
         const chunkLength = chunk.readUInt32LE(lengthOffset);
         
-        // Basic validation on the parsed length
         if (chunkLength > chunk.length - guanoIndex || chunkLength <= 0) {
-            console.log(`DEBUG: Invalid metadata chunk length read from file: ${chunkLength}. Buffer size from GUANO index: ${chunk.length - guanoIndex}`);
             return null;
         }
 
@@ -66,28 +59,92 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
         const metadataEnd = metadataStart + chunkLength;
 
         if (metadataEnd > chunk.length) {
-            console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size.`);
             return null;
         }
         
-        // The metadata is not necessarily UTF-8, but it's the most likely encoding for the text parts.
-        // Let's be explicit and replace non-printable characters.
         const rawMetadataSlice = chunk.subarray(metadataStart, metadataEnd);
         let metadataContent = '';
         for (let i = 0; i < rawMetadataSlice.length; i++) {
             const charCode = rawMetadataSlice[i];
-            // Allow printable ASCII characters (32-126) plus newline, carriage return, and tab
             if ((charCode >= 32 && charCode <= 126) || charCode === 10 || charCode === 13 || charCode === 9) {
                  metadataContent += String.fromCharCode(charCode);
             }
         }
         
-        console.log(`DEBUG: Successfully extracted metadata chunk of length ${chunkLength}.`);
         return metadataContent.trim();
     } catch (error) {
         console.error(`[SERVER_ERROR] Failed to process GUANO metadata from chunk:`, error);
         return null;
     }
+}
+
+
+/**
+ * Parses a GUANO metadata string into a structured DataPoint object.
+ * This is a fast, reliable, rule-based parser that avoids AI unpredictability.
+ */
+function parseGuanoMetadata(metadataString: string, originalFilename: string): DataPoint | null {
+  try {
+    const fields = metadataString.split('|');
+    const metadataMap = new Map<string, string>();
+
+    fields.forEach(field => {
+      const parts = field.split(':');
+      if (parts.length > 1) {
+        const key = parts[0].trim();
+        const value = parts.slice(1).join(':').trim();
+        metadataMap.set(key, value);
+      }
+    });
+
+    let audioSettings: any = {};
+    const audioSettingsString = metadataMap.get('Audio settings');
+    if (audioSettingsString) {
+      try {
+        // The value is a JSON array string, e.g., '[{...}]'
+        audioSettings = JSON.parse(audioSettingsString)[0];
+      } catch (e) {
+        console.error("Failed to parse 'Audio settings' JSON:", e);
+      }
+    }
+
+    const locPosition = metadataMap.get('Loc Position')?.split(' ') || [];
+
+    const dataPoint: DataPoint = {
+      fileInformation: {
+        originalFilename: metadataMap.get('Original Filename') || originalFilename,
+        recordingDateTime: metadataMap.get('Timestamp'),
+        recordingDurationSeconds: Number(metadataMap.get('Length')) || undefined,
+        sampleRateHz: Number(metadataMap.get('Samplerate')) || undefined,
+      },
+      recorderDetails: {
+        make: metadataMap.get('Make'),
+        model: metadataMap.get('Model'),
+        serialNumber: metadataMap.get('Serial'),
+        firmwareVersion: metadataMap.get('Firmware Version'),
+        gainSetting: audioSettings.gain,
+      },
+      locationEnvironmentalData: {
+        latitude: locPosition[0] ? Number(locPosition[0]) : undefined,
+        longitude: locPosition[1] ? Number(locPosition[1]) : undefined,
+        temperatureCelsius: Number(metadataMap.get('Temperature Int')) || undefined,
+      },
+      triggerSettings: {
+        windowSeconds: audioSettings['trig window'],
+        maxLengthSeconds: audioSettings['trig max len'],
+        minFrequencyHz: audioSettings['trig min freq'],
+        maxFrequencyHz: audioSettings['trig max freq'],
+        minDurationSeconds: audioSettings['trig min dur'],
+        maxDurationSeconds: audioSettings['trig max dur'],
+      },
+    };
+    
+    return dataPoint;
+
+  } catch (error) {
+    console.error('[SERVER_ERROR] Failed to parse GUANO metadata string:', error);
+    return null;
+  }
 }
 
 
@@ -108,8 +165,6 @@ export async function processFileAction(
         const extension = filename.split('.').pop()?.toLowerCase() || '';
         const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
 
-        // Download a chunk of the file to look for metadata
-        // For GUANO, metadata is often at the end. We download the last 1MB.
         const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB
         const start = Math.max(0, Number(metadata.size) - CHUNK_SIZE);
         const [fileBuffer] = await file.download({ start });
@@ -120,30 +175,25 @@ export async function processFileAction(
                  console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file chunk '${filename}'.`);
             } else {
                  console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block from chunk.`);
-                 fileContentForClient = rawMetadata.replace(/\|/g, '\n'); // Normalize for display
+                 fileContentForClient = rawMetadata.replace(/\|/g, '\n'); 
             }
         } else {
-            // For text-based files, the buffer is the whole file content
             rawMetadata = fileBuffer.toString('utf-8');
             fileContentForClient = rawMetadata;
             console.log(`[SERVER_INFO] Step 2 Success: Processed text file '${filename}'.`);
         }
 
         if (rawMetadata) {
-            try {
-                console.log(`[SERVER_INFO] Step 3 Started: Calling AI to extract data from '${filename}'.`);
-                const aiResult = await extractData({ fileContent: rawMetadata, filename: filename });
-                if (aiResult && aiResult.data.length > 0) {
-                    extractedData = aiResult.data;
-                    console.log(`[SERVER_INFO] Step 3 Success: AI extracted ${aiResult.data.length} data point(s).`);
-                } else {
-                    console.log(`[SERVER_INFO] Step 3 Incomplete: AI returned no data points from '${filename}'.`);
-                }
-            } catch (aiError) {
-                 console.error(`[SERVER_ERROR] Step 3 Failed: AI data extraction failed for '${filename}'.`, aiError);
+            // Use the fast, reliable parser instead of the AI
+            const parsedData = parseGuanoMetadata(rawMetadata, filename);
+            if (parsedData) {
+                extractedData = [parsedData];
+                console.log(`[SERVER_INFO] Step 3 Success: Manually parsed GUANO data.`);
+            } else {
+                console.log(`[SERVER_INFO] Step 3 Failed: Manual parser could not extract data from '${filename}'.`);
             }
         } else {
-             console.log(`[SERVER_INFO] Step 3 Skipped: No raw metadata to send to AI for '${filename}'.`);
+             console.log(`[SERVER_INFO] Step 3 Skipped: No raw metadata to process for '${filename}'.`);
         }
 
         return { 
@@ -151,7 +201,7 @@ export async function processFileAction(
             extension, 
             name: filename, 
             isBinary,
-            rawMetadata: fileContentForClient, 
+            rawMetadata: rawMetadata, 
             extractedData 
         };
 
@@ -179,7 +229,6 @@ export async function getDownloadUrlAction(fileName: string) {
   const bucket = adminStorage.bucket(BUCKET_NAME);
   const file = bucket.file(`uploads/${fileName}`);
 
-  // Generate a signed URL valid for 15 minutes that forces a download
   const [url] = await file.getSignedUrl({
     action: "read",
     expires: Date.now() + 15 * 60 * 1000,
