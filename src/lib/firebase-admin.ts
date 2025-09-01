@@ -3,22 +3,22 @@ import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 import { ServiceAccount } from "firebase-admin";
 
-// Import the service account key from the new JSON file.
-// The `resolveJsonModule` and `esModuleInterop` in tsconfig.json allow this direct import.
-import serviceAccountCredentials from '@/lib/service-account.json';
-
 let adminApp: App;
 let adminStorage: Storage;
 
 try {
     if (!getApps().length) {
-        // Cast the imported JSON to the ServiceAccount type for type safety.
-        const serviceAccount = serviceAccountCredentials as ServiceAccount;
+        // Attempt to parse the service account from the environment variable.
+        // This is a more secure and build-friendly approach than importing a JSON file.
+        const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+        if (!serviceAccountString) {
+            throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set. Please add it to your .env file.");
+        }
+        
+        const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
 
         adminApp = initializeApp({
             credential: cert(serviceAccount),
-            // The default bucket name is no longer needed here,
-            // as we will specify it explicitly in each action.
         });
 
     } else {
