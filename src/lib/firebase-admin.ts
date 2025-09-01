@@ -1,5 +1,5 @@
 
-import { initializeApp, getApps, App, cert } from "firebase-admin/app";
+import { initializeApp, getApps, App, cert, AppOptions } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 
 let adminApp: App;
@@ -11,16 +11,16 @@ const SERVICE_ACCOUNT_EMAIL = "firebase-app-hosting-compute@cellular-data-stream
 
 try {
     if (!getApps().length) {
-        // When deployed to App Hosting, the SDK will automatically use the
-        // default service account credentials. However, since auto-discovery is failing,
-        // we explicitly specify the service account to use.
-        adminApp = initializeApp({
-             credential: cert({
-                projectId: process.env.GCLOUD_PROJECT,
-                privateKey: process.env.GOOGLE_PRIVATE_KEY, // This should be available in App Hosting
-                clientEmail: SERVICE_ACCOUNT_EMAIL,
-            }),
-        });
+        // When running in a Google Cloud environment like App Hosting, the SDK
+        // should automatically find the service account credentials. However,
+        // we are explicitly providing the service account email to ensure
+        // the correct identity is used for signing URLs.
+        const appOptions: AppOptions = {
+            // By specifying only the serviceAccountId, the SDK will use it
+            // with the other credentials it finds automatically in the environment.
+            serviceAccountId: SERVICE_ACCOUNT_EMAIL,
+        };
+        adminApp = initializeApp(appOptions);
     } else {
         adminApp = getApps()[0];
     }
