@@ -4,7 +4,8 @@
 import { useState, useTransition, useCallback, useEffect } from "react";
 import type { UploadedFile, FileContent } from "@/lib/types";
 import { deleteFileAction, processFileAction, getDownloadUrlAction } from "@/app/actions";
-import { getClientFiles } from "@/lib/firebase-client";
+import { getClientFiles, clientStorage } from "@/lib/firebase-client";
+import { ref, getBlob } from "firebase/storage";
 import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
 import { FileList } from "./file-list";
 import { FileDisplay } from "./file-display";
@@ -22,6 +23,17 @@ import { Terminal } from "lucide-react";
 
 interface MainViewProps {
   initialFiles: UploadedFile[];
+}
+
+// Helper to convert ArrayBuffer to Base64
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
 }
 
 export function MainView({ initialFiles }: MainViewProps) {
@@ -80,7 +92,44 @@ export function MainView({ initialFiles }: MainViewProps) {
   useEffect(() => {
     if (selectedFileName) {
       startTransition(async () => {
-        const result = await processFileAction(selectedFileName);
+        const selectedFile = files.find(f => f.name === selectedFileName);
+        if (!selectedFile) {
+            setError(`Could not find file details for ${selectedFileName}`);
+            return;
+        }
+
+        let fileChunkBase64: string | null = null;
+        try {
+            const extension = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+            const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
+
+            if (isBinary && selectedFile.size > 0) {
+                const CHUNK_SIZE = 1024 * 1024; // 1MB
+                const start = Math.max(0, selectedFile.size - CHUNK_SIZE);
+                const end = selectedFile.size -1;
+
+                console.log(`[CLIENT] Downloading range ${start}-${end} for ${selectedFile.name}`);
+                const fileRef = ref(clientStorage, `uploads/${selectedFile.name}`);
+                const blob = await getBlob(fileRef, start, end);
+                const arrayBuffer = await blob.arrayBuffer();
+                fileChunkBase64 = arrayBufferToBase64(arrayBuffer);
+                console.log("[CLIENT] Successfully downloaded chunk and encoded to Base64.");
+            } else if (selectedFile.size > 0) {
+                // For non-binary (text) files, download the whole thing
+                const fileRef = ref(clientStorage, `uploads/${selectedFile.name}`);
+                const blob = await getBlob(fileRef);
+                const arrayBuffer = await blob.arrayBuffer();
+                fileChunkBase64 = arrayBufferToBase64(arrayBuffer);
+            }
+        } catch (e: any) {
+             console.error("[CLIENT] Error downloading file chunk:", e);
+             setError(`Failed to download file from storage. Server logs may have more details. Ensure Firebase credentials are set correctly. Error code: ${e.code}`);
+             setActiveFileContent(null);
+             return;
+        }
+
+        const result = await processFileAction(selectedFileName, fileChunkBase64);
+        
         if (result && 'error' in result) {
             setError(result.error);
             setActiveFileContent(null);
@@ -97,6 +146,7 @@ export function MainView({ initialFiles }: MainViewProps) {
         setActiveFileContent(null);
         setError(null);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFileName]);
 
   const handleUploadComplete = useCallback(() => {

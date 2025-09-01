@@ -36,29 +36,13 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
     }
 }
 
-async function findGuanoMetadata(file: import("firebase-admin/storage").File): Promise<string | null> {
+function findGuanoMetadataInChunk(chunk: Buffer): string | null {
     try {
-        const [metadata] = await file.getMetadata();
-        const fileSize = Number(metadata.size) || 0;
-        
-        if (fileSize === 0) {
-            console.log(`[SERVER_INFO] Skipping GUANO search for empty file: ${file.name}`);
-            return null;
-        }
-
-        const rangeStart = Math.max(0, fileSize - 1024 * 1024); // Last 1MB
-        const rangeEnd = fileSize - 1; // Read to the end of the file
-
-        console.log(`[SERVER_INFO] Searching for GUANO. File size: ${fileSize}, download range: ${rangeStart}-${rangeEnd}`);
-
-        // Download only the specified range of the file.
-        const [buffer] = await file.download({ start: rangeStart, end: rangeEnd });
-        
         const guanoKeyword = Buffer.from("GUANO");
-        const guanoIndex = buffer.indexOf(guanoKeyword);
+        const guanoIndex = chunk.indexOf(guanoKeyword);
 
         if (guanoIndex === -1) {
-            console.log("DEBUG: GUANO keyword not found in the downloaded range.");
+            console.log("DEBUG: GUANO keyword not found in the provided chunk.");
             return null;
         }
 
@@ -68,29 +52,26 @@ async function findGuanoMetadata(file: import("firebase-admin/storage").File): P
             return null;
         }
 
-        const chunkLength = buffer.readUInt32LE(lengthOffset);
+        const chunkLength = chunk.readUInt32LE(lengthOffset);
         
-        // Ensure the chunk length is reasonable to avoid reading garbage data
-        if (chunkLength > buffer.length - guanoIndex || chunkLength <= 0) {
-            console.log(`DEBUG: Invalid metadata chunk length (${chunkLength}) found.`);
+        if (chunkLength > chunk.length - guanoIndex || chunkLength <= 0) {
+            console.log(`DEBUG: Invalid metadata chunk length (${chunkLength}).`);
             return null;
         }
 
         const metadataStart = guanoIndex;
         const metadataEnd = metadataStart + chunkLength;
 
-        if (metadataEnd > buffer.length) {
-            console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size (${buffer.length}). This can happen if the GUANO block is fragmented at the edge of the downloaded range.`);
-            // This is a limitation of the current approach. For a full solution, one might need to re-download a larger chunk.
+        if (metadataEnd > chunk.length) {
+            console.log(`DEBUG: Metadata chunk length (${chunkLength}) exceeds buffer size.`);
             return null;
         }
 
-        const metadataContent = buffer.toString('utf-8', metadataStart, metadataEnd);
+        const metadataContent = chunk.toString('utf-8', metadataStart, metadataEnd);
         console.log(`DEBUG: Successfully extracted metadata chunk of length ${chunkLength}.`);
         return metadataContent.trim();
-
     } catch (error) {
-        console.error(`[SERVER_ERROR] Failed to read or process GUANO metadata for ${file.name}:`, error);
+        console.error(`[SERVER_ERROR] Failed to process GUANO metadata from chunk:`, error);
         return null;
     }
 }
@@ -98,35 +79,29 @@ async function findGuanoMetadata(file: import("firebase-admin/storage").File): P
 
 export async function processFileAction(
   filename: string,
+  fileChunkBase64: string | null // Receive the chunk from the client
 ): Promise<FileContent | { error: string }> {
-    let fileBuffer: Buffer | null = null;
     let rawMetadata: string | null = null;
     let extractedData: DataPoint[] | null = null;
     
     try {
-        console.log(`[SERVER_INFO] Step 1 Started: Processing '${filename}' from Firebase Storage.`);
-        const bucket = adminStorage.bucket();
-        const file = bucket.file(`uploads/${filename}`);
-
+        console.log(`[SERVER_INFO] Step 1 Started: Processing '${filename}' from client-provided chunk.`);
+        
         const extension = filename.split('.').pop()?.toLowerCase() || '';
 
-        // Only search for GUANO in specific file types to be efficient
-        if (['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension)) {
-            rawMetadata = await findGuanoMetadata(file);
+        // Only process chunk for binary files that might contain GUANO
+        if (fileChunkBase64 && ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension)) {
+            const fileBuffer = Buffer.from(fileChunkBase64, 'base64');
+            rawMetadata = findGuanoMetadataInChunk(fileBuffer);
              if (!rawMetadata) {
-                 console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file '${filename}'.`);
+                 console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file chunk '${filename}'.`);
             } else {
-                 console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block.`);
+                 console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block from chunk.`);
             }
-        } else {
-            // For text-based files, download the whole file (assuming they are small)
-             try {
-                const [downloadedBuffer] = await file.download();
-                rawMetadata = downloadedBuffer.toString("utf-8");
-                 console.log(`[SERVER_INFO] Step 2 Success: Processed text file '${filename}'.`);
-            } catch (e) {
-                 console.log(`[SERVER_INFO] Step 2 Incomplete: Could not decode as UTF-8.`);
-            }
+        } else if(fileChunkBase64) {
+            // For text-based files, the chunk is the whole file content
+            rawMetadata = Buffer.from(fileChunkBase64, 'base64').toString('utf-8');
+            console.log(`[SERVER_INFO] Step 2 Success: Processed text file '${filename}'.`);
         }
 
         if (rawMetadata) {
@@ -146,16 +121,16 @@ export async function processFileAction(
              console.log(`[SERVER_INFO] Step 3 Skipped: No raw metadata to send to AI for '${filename}'.`);
         }
 
-        // We only generate a download URL for binary files now, as text content is already fetched.
-        const content = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension)
-            ? `data:application/octet-stream;base64,` // Placeholder, real content is not downloaded unless needed
+        const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
+        const content = isBinary
+            ? `data:application/octet-stream;base64,` // Placeholder, real content is not on the server
             : rawMetadata || ''; // For text files, content is the metadata
 
         return { 
             content, 
             extension, 
             name: filename, 
-            isBinary: ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension),
+            isBinary,
             rawMetadata, 
             extractedData 
         };
