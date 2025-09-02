@@ -24,13 +24,17 @@ function initializeFirebaseAdmin() {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         
         if (serviceAccountString) {
-            // Production environment (App Hosting with secret)
             console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
             
-            // The service account comes in as a double-encoded JSON string. Parse it once to get the JSON string.
-            const decodedString = JSON.parse(serviceAccountString);
-            // Parse it a second time to get the actual service account object.
-            const serviceAccount = JSON.parse(decodedString) as ServiceAccount;
+            let serviceAccount: ServiceAccount;
+            try {
+                // First, try to parse the string directly.
+                serviceAccount = JSON.parse(serviceAccountString);
+            } catch (e) {
+                // If that fails, it's likely double-encoded. Parse it again.
+                console.log("[INFO] Direct parse failed. Attempting to parse double-encoded JSON.");
+                serviceAccount = JSON.parse(JSON.parse(serviceAccountString));
+            }
             
             // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
             if (serviceAccount.private_key) {
