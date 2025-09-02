@@ -22,7 +22,7 @@ function initializeFirebaseAdmin() {
     }
 
     try {
-        const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+        let serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         
         // Check if the secret is missing or empty. This is the condition for local development.
         if (!serviceAccountString || serviceAccountString.trim() === '') {
@@ -42,16 +42,17 @@ function initializeFirebaseAdmin() {
 
             let serviceAccount: ServiceAccount;
             try {
-                // First parse turns the string literal into a JSON string.
-                let parsed = JSON.parse(serviceAccountString);
+                // The secret is often delivered as a string literal (double-encoded).
+                // We need to manually clean it before parsing.
+                if (serviceAccountString.startsWith('"') && serviceAccountString.endsWith('"')) {
+                    serviceAccountString = serviceAccountString.slice(1, -1).replace(/\\"/g, '"');
+                }
 
-                // If the result is still a string (double-encoded), parse it again.
-                // Otherwise, use the parsed object directly.
-                serviceAccount = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+                serviceAccount = JSON.parse(serviceAccountString);
                 
             } catch (e) {
                 console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
-                throw new Error("The service account secret is not valid JSON, even after attempting to parse it as single or double-encoded.");
+                throw new Error("The service account secret is not valid JSON, even after attempting to clean it.");
             }
             
             // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
