@@ -11,8 +11,9 @@ function initializeFirebaseAdmin() {
         return { adminApp, adminStorage: adminStorage! };
     }
 
-    const appName = 'firebase-admin-app';
+    const appName = 'firebase-admin-app-cellular-streamer';
     const existingApp = getApps().find(app => app.name === appName);
+
     if (existingApp) {
         adminApp = existingApp;
         adminStorage = getStorage(adminApp);
@@ -22,26 +23,25 @@ function initializeFirebaseAdmin() {
     try {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         
-        let credential;
-
         if (serviceAccountString) {
             // Production environment (App Hosting with secret)
             const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
-            if (serviceAccount.private_key) {
-                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-            }
-            credential = cert(serviceAccount);
+            
+            // The critical fix for the "Invalid PEM" error
+            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
+            adminApp = initializeApp({
+                credential: cert(serviceAccount),
+                storageBucket: "cellular-data-streamer.firebasestorage.app"
+            }, appName);
+
         } else {
             // Local development environment (relies on ADC or GOOGLE_APPLICATION_CREDENTIALS file path)
-            console.log("[INFO] GOOGLE_APPLICATION_CREDENTIALS_JSON not found. Using Application Default Credentials for local development.");
-            // The SDK will automatically find the credentials
-            credential = undefined; 
+            console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
+            adminApp = initializeApp({
+                storageBucket: "cellular-data-streamer.firebasestorage.app"
+            }, appName);
         }
-
-        adminApp = initializeApp({
-            credential: credential ? cert(credential) : undefined,
-            storageBucket: "cellular-data-streamer.firebasestorage.app"
-        }, appName);
         
         adminStorage = getStorage(adminApp);
 

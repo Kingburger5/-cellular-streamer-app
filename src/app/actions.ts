@@ -107,10 +107,11 @@ export async function processFileAction(
         const isBinary = ['wav', 'mp3', 'ogg', 'zip', 'gz', 'bin'].includes(extension);
 
         if (isBinary) {
-            // For binary files, look for metadata in the whole file
             rawMetadata = findGuanoMetadataInChunk(fileBuffer);
              if (!rawMetadata) {
                  console.log(`[SERVER_INFO] Step 2 Incomplete: No GUANO metadata block found in binary file '${filename}'.`);
+                 // Fallback for client display if no GUANO
+                 fileContentForClient = "No GUANO metadata found in this binary file.";
             } else {
                  console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block.`);
                  fileContentForClient = rawMetadata.replace(/\|/g, '\n'); 
@@ -126,7 +127,6 @@ export async function processFileAction(
             console.log(`[SERVER_INFO] Step 3 Started: AI processing of '${filename}' metadata.`);
             const aiResult = await extractData({ fileContent: rawMetadata, filename });
             if (aiResult) {
-                // The AI returns an object with a single 'data' property which is an array
                 extractedData = aiResult.data;
                 console.log(`[SERVER_INFO] Step 3 Success: AI successfully extracted data.`);
             } else {
