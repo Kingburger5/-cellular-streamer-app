@@ -25,8 +25,6 @@ function initializeFirebaseAdmin() {
             throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set. This is required for server-side operations.");
         }
         
-        // The service account string from the secret manager is already a JSON object.
-        // We parse it into a ServiceAccount object.
         const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
 
         // **CRITICAL FIX for "Invalid PEM formatted message" error**
