@@ -4,6 +4,7 @@
 import { getAdminStorage } from "@/lib/firebase-admin";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 import { extractData } from "@/ai/flows/extract-data-flow";
+import { GoogleAuth } from 'google-auth-library';
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
@@ -172,24 +173,48 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string): Promise<string> {
-  try {
-    const adminStorage = await getAdminStorage();
-    const bucket = adminStorage.bucket(BUCKET_NAME);
-    const file = bucket.file(`uploads/${fileName}`);
+    try {
+        const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+        if (!serviceAccountString) {
+            throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON is not set in the environment.");
+        }
 
-    const [signedUrl] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-      responseDisposition: `attachment; filename="${fileName}"`,
-    });
+        const serviceAccount = JSON.parse(serviceAccountString);
 
-    return signedUrl;
-  } catch (error) {
-    console.error(`[Server] Error generating signed URL for ${fileName}:`, error);
-    const message = error instanceof Error ? error.message : "An unknown error occurred.";
-    // Re-throw a more user-friendly error to be caught by the client
-    throw new Error(`Could not generate download link. Please check server logs and ensure the service account has 'Service Account Token Creator' role. Details: ${message}`);
-  }
+        // The private key from environment variables often has escaped newlines.
+        if (serviceAccount.private_key) {
+            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        }
+
+        // Create a new GoogleAuth client with the explicit service account credentials
+        const auth = new GoogleAuth({
+            credentials: {
+                client_email: serviceAccount.client_email,
+                private_key: serviceAccount.private_key,
+            },
+            scopes: ['https://www.googleapis.com/auth/devstorage.read_only'],
+        });
+
+        const client = await auth.getClient();
+        const projectId = await auth.getProjectId();
+        
+        const url = `https://storage.googleapis.com/${BUCKET_NAME}/uploads/${fileName}`;
+        const expiration = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+        const [signedUrl] = await client.signUrl(url, {
+            version: 'v4',
+            action: 'read',
+            expires: expiration,
+            responseDisposition: `attachment; filename="${fileName}"`,
+        });
+
+        return signedUrl;
+
+    } catch (error) {
+        console.error(`[Server] Error generating signed URL for ${fileName}:`, error);
+        const message = error instanceof Error ? error.message : "An unknown error occurred.";
+        throw new Error(`Could not generate download link. Please check server logs and ensure the service account has 'Service Account Token Creator' role. Details: ${message}`);
+    }
 }
 
 

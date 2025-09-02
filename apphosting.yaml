@@ -8,7 +8,6 @@ backend:
     # Mount the service account key from Secret Manager as an environment variable
     # This is a secure way to provide credentials to your application.
     - secret: GOOGLE_APPLICATION_CREDENTIALS_JSON
-    - secret: GOOGLE_APPLICATION_CREDENTIALS
 
 runConfig:
   # Increase this value if you'd like to automatically spin up
