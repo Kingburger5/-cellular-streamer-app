@@ -25,6 +25,11 @@ function initializeFirebaseAdmin() {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         
         if (serviceAccountString) {
+            console.log(
+              "[DEBUG] Secret first 100 chars:",
+              JSON.stringify(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.slice(0, 100))
+            );
+            
             console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
             
             let decodedString = serviceAccountString;
