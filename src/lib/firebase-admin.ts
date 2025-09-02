@@ -11,54 +11,51 @@ function initializeFirebaseAdmin() {
         return { adminApp, adminStorage: adminStorage! };
     }
 
-    if (getApps().length > 0) {
-        // Use the already initialized app in a hot-reload scenario
-        adminApp = getApps()[0]!;
+    const appName = 'firebase-admin-app';
+    const existingApp = getApps().find(app => app.name === appName);
+    if (existingApp) {
+        adminApp = existingApp;
         adminStorage = getStorage(adminApp);
         return { adminApp, adminStorage };
     }
 
     try {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-        if (!serviceAccountString) {
-            throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set.");
-        }
         
-        const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
+        let credential;
 
-        // **CRITICAL FIX for "Invalid PEM formatted message" error**
-        // The `private_key` from the environment variable often has its newlines
-        // escaped (e.g., "\\n"). We must replace them with actual newlines ("\n")
-        // for the PEM key to be valid.
-        if (serviceAccount.private_key) {
-            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        if (serviceAccountString) {
+            // Production environment (App Hosting with secret)
+            const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
+            if (serviceAccount.private_key) {
+                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            }
+            credential = cert(serviceAccount);
+        } else {
+            // Local development environment (relies on ADC or GOOGLE_APPLICATION_CREDENTIALS file path)
+            console.log("[INFO] GOOGLE_APPLICATION_CREDENTIALS_JSON not found. Using Application Default Credentials for local development.");
+            // The SDK will automatically find the credentials
+            credential = undefined; 
         }
 
         adminApp = initializeApp({
-            credential: cert(serviceAccount),
+            credential: credential ? cert(credential) : undefined,
             storageBucket: "cellular-data-streamer.firebasestorage.app"
-        }, 'firebase-admin-app'); // Use a unique app name
+        }, appName);
         
         adminStorage = getStorage(adminApp);
 
     } catch (error: any) {
         console.error("[CRITICAL] Firebase Admin SDK initialization error:", error);
-        // Throw a new error to provide a clear message in the logs, including the original error.
-        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Original Error: ${error.message}`);
+        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Original Error: ${error.message}`);
     }
 
     return { adminApp, adminStorage: adminStorage! };
 }
 
-/**
- * Returns the initialized Firebase Admin Storage instance.
- * Ensures that the initialization logic is only run once.
- */
-function getAdminStorage(): Storage {
+export function getAdminStorage(): Storage {
     if (!adminStorage) {
         initializeFirebaseAdmin();
     }
     return adminStorage!;
 }
-
-export { getAdminStorage };
