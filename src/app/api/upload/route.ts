@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
         const originalFilename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
         const filePath = `uploads/${originalFilename}`;
         
-        const adminStorage = getAdminStorage();
-        const bucket = adminStorage.bucket(BUCKET_NAME);
+        const adminStorage = await getAdminStorage();
+        const bucket = adminStorage.bucket(BUCKET_-NAME);
         const file = bucket.file(filePath);
 
         await file.save(Buffer.from(fileBuffer), {
