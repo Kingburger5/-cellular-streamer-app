@@ -175,22 +175,13 @@ export async function getDownloadUrlAction(fileName: string): Promise<string> {
   const adminStorage = await getAdminStorage();
   const bucket = adminStorage.bucket(BUCKET_NAME);
   const file = bucket.file(`uploads/${fileName}`);
-
-  const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (!serviceAccountString) {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON is not set in the environment.");
-  }
-  const serviceAccount = JSON.parse(serviceAccountString);
-
+  
+  // Use the Firebase Admin SDK's built-in signing capabilities.
+  // This will use the credentials the SDK was initialized with.
   const [url] = await file.getSignedUrl({
     action: "read",
     expires: Date.now() + 15 * 60 * 1000, // 15 minutes
     responseDisposition: `attachment; filename="${fileName}"`,
-    // Pass credentials directly to ensure signing is possible
-    credentials: {
-      client_email: serviceAccount.client_email,
-      private_key: serviceAccount.private_key.replace(/\\n/g, '\n'),
-    },
   });
 
   return url;
