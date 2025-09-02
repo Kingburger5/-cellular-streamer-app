@@ -23,7 +23,9 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
     }
     
     // In App Hosting, this secret WILL be present. Locally, it will be empty.
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON.trim() === '') {
+    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+    if (!serviceAccountString || serviceAccountString.trim() === '') {
         // LOCAL DEVELOPMENT: Use Application Default Credentials.
         console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON found. Using Application Default Credentials for local dev.");
         adminApp = initializeApp({
@@ -37,18 +39,16 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
     console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
     
     try {
-        const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         const serviceAccount: ServiceAccount = JSON.parse(serviceAccountString);
 
-        // The private_key needs to have its escaped newlines replaced with actual newlines.
-        const privateKey = serviceAccount.private_key?.replace(/\\n/g, '\n');
+        // ** THE FIX **: The private key from JSON has escaped newlines (\\n).
+        // We must replace them with actual newline characters (\n) for the PEM format to be valid.
+        if (serviceAccount.private_key) {
+            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        }
 
         adminApp = initializeApp({
-            credential: cert({
-                projectId: serviceAccount.project_id,
-                clientEmail: serviceAccount.client_email,
-                privateKey: privateKey,
-            }),
+            credential: cert(serviceAccount),
             storageBucket: "cellular-data-streamer.firebasestorage.app"
         }, appName);
         
@@ -59,7 +59,7 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
     } catch (e: any) {
         console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
         const detail = e instanceof Error 
-            ? `The service account credentials from the secret are not valid JSON. Details: ${e.message}`
+            ? `The service account credentials from the secret are not valid. Details: ${e.message}`
             : "An unknown parsing error occurred.";
         throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Detail: ${detail}`);
     }
