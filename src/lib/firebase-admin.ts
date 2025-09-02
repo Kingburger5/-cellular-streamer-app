@@ -1,7 +1,8 @@
 
-import { initializeApp, getApps, App, cert } from "firebase-admin/app";
+import { initializeApp, getApps, App, cert, ServiceAccount } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
-import type { ServiceAccount } from "firebase-admin";
+import { Buffer } from "buffer";
+
 
 let adminApp: App | null = null;
 let adminStorage: Storage | null = null;
@@ -26,14 +27,30 @@ function initializeFirebaseAdmin() {
         if (serviceAccountString) {
             console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
             
+            let decodedString = serviceAccountString;
+            // Attempt to decode from base64, as this is a common way secrets are handled.
+            try {
+                // A simple heuristic to check for base64. A more robust check might be needed if other strings trigger this.
+                if (/^[a-zA-Z0-9+/=]+$/.test(decodedString.trim())) {
+                    const fromBase64 = Buffer.from(decodedString, "base64").toString("utf8");
+                     // If decoding results in a string that looks like JSON, use it.
+                    if (fromBase64.trim().startsWith('{')) {
+                        console.log("[INFO] Secret appears to be Base64-encoded. Using decoded value.");
+                        decodedString = fromBase64;
+                    }
+                }
+            } catch (e) {
+                console.log("[INFO] Could not decode secret from base64, using as-is.", e);
+            }
+
             let serviceAccount: ServiceAccount;
             try {
-                 // Try parsing once, for single-encoded JSON
-                serviceAccount = JSON.parse(serviceAccountString);
+                // Try parsing once for standard JSON
+                serviceAccount = JSON.parse(decodedString);
             } catch (e) {
-                 // If that fails, it's likely double-encoded. Parse it again.
+                // If that fails, it's likely double-encoded. Parse it again.
                 console.log("[INFO] Direct parse failed. Attempting to parse double-encoded JSON.");
-                serviceAccount = JSON.parse(JSON.parse(serviceAccountString));
+                serviceAccount = JSON.parse(JSON.parse(decodedString));
             }
             
             // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
