@@ -28,7 +28,7 @@ function initializeFirebaseAdmin() {
             
             let serviceAccount: ServiceAccount;
             try {
-                // First, try to parse the string directly.
+                // First, try to parse the string directly, assuming it's single-encoded.
                 serviceAccount = JSON.parse(serviceAccountString);
             } catch (e) {
                 // If that fails, it's likely double-encoded. Parse it again.
@@ -46,7 +46,6 @@ function initializeFirebaseAdmin() {
                 storageBucket: "cellular-data-streamer.firebasestorage.app"
             }, appName);
             
-
         } else {
             // Local development environment (relies on ADC from `gcloud auth application-default login`)
             console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
