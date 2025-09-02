@@ -73,6 +73,9 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         rawKey = rawKey.replace(/(-----BEGIN PRIVATE KEY-----)/, '$1\n')
                        .replace(/(-----END PRIVATE KEY-----)/, '\n$1');
 
+        // DEBUG: Safely log the normalized key to verify its format
+        console.log("[DEBUG] Private key preview:", rawKey.slice(0, 30) + '...' + rawKey.slice(-30));
+
         serviceAccount = {
             projectId: finalParsed.project_id,
             clientEmail: finalParsed.client_email,
