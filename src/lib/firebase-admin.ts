@@ -57,16 +57,21 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         // For debugging: log the parsed credential object, redacting the private key.
         console.log('[DEBUG] Parsed credential object:', JSON.stringify({ ...finalParsed, private_key: '[REDACTED]' }));
 
-        // Step 4: The key is not a valid PEM format until newlines are correctly handled.
-        // This is the definitive fix for "Invalid PEM" errors.
+        // Step 4: The key is not a valid PEM format until it is meticulously cleaned.
         let rawKey = finalParsed.private_key;
-
-        // Step 4a: Trim any whitespace or quotes from the key itself.
-        rawKey = rawKey.trim().replace(/^"+|"+$/g, '');
         
-        // Step 4b: Replace all forms of escaped newlines with actual newlines.
-        // Handles both \\n (from double escaping) and \n.
+        // Step 4a: Remove all leading/trailing whitespace.
+        rawKey = rawKey.trim();
+        
+        // Step 4b: Remove wrapping quotes if any exist.
+        rawKey = rawKey.replace(/^"+|"+$/g, '');
+        
+        // Step 4c: Replace all forms of escaped newlines with actual newlines.
         rawKey = rawKey.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n');
+
+        // Step 4d: Ensure the PEM headers and footers are on their own lines.
+        rawKey = rawKey.replace(/(-----BEGIN PRIVATE KEY-----)/, '$1\n')
+                       .replace(/(-----END PRIVATE KEY-----)/, '\n$1');
 
         serviceAccount = {
             projectId: finalParsed.project_id,
