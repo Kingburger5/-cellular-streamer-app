@@ -22,12 +22,13 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
     
-    // In App Hosting, this secret WILL be present. Locally, it will be empty.
-    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    // Check for either environment variable, preferring the standard one.
+    // This handles the case where the real secret is in the non-standard variable.
+    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ?? process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
 
     if (!serviceAccountString || serviceAccountString.trim() === '') {
         // LOCAL DEVELOPMENT: Use Application Default Credentials.
-        console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON found. Using Application Default Credentials for local dev.");
+        console.log("[INFO] No service account JSON found in environment. Using Application Default Credentials for local dev.");
         adminApp = initializeApp({
             storageBucket: "cellular-data-streamer.firebasestorage.app"
         }, appName);
@@ -44,7 +45,10 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         // ** THE FIX **: The private key from JSON has escaped newlines (\\n).
         // We must replace them with actual newline characters (\n) for the PEM format to be valid.
         if (serviceAccount.private_key) {
+            console.debug("[DEBUG] Private key before normalization starts with:", serviceAccount.private_key.slice(0, 30));
             serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            console.debug("[DEBUG] Private key after normalization starts with:", serviceAccount.private_key.slice(0, 30));
+            console.debug("[DEBUG] Private key after normalization ends with:", serviceAccount.private_key.slice(-30));
         }
 
         adminApp = initializeApp({
@@ -83,3 +87,4 @@ export async function getAdminStorage(): Promise<Storage> {
         throw new Error("Could not get Firebase Admin Storage instance. Initialization may have failed.");
     }
 }
+
