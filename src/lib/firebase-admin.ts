@@ -76,12 +76,6 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         // DEBUG: Safely log the normalized key to verify its format
         console.log("[DEBUG] Private key preview:", rawKey.slice(0, 30) + '...' + rawKey.slice(-30));
         
-        // Enhanced DEBUG: Print each line to check for formatting issues.
-        console.log('[DEBUG] Line-by-line private key check:');
-        rawKey.split('\n').forEach((line, i) => {
-            console.log(`[DEBUG] Line ${i}: "${line}"`);
-        });
-
         serviceAccount = {
             projectId: finalParsed.project_id,
             clientEmail: finalParsed.client_email,
