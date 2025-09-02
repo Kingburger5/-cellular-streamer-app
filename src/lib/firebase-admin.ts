@@ -24,13 +24,23 @@ function initializeFirebaseAdmin() {
     try {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         
-        if (serviceAccountString) {
+        // Check if the secret is missing, empty, or just whitespace.
+        // This is the condition for local development.
+        if (!serviceAccountString || serviceAccountString.trim() === '') {
+             // Local development environment (relies on ADC from `gcloud auth application-default login`)
+            console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
+            adminApp = initializeApp({
+                storageBucket: "cellular-data-streamer.firebasestorage.app"
+            }, appName);
+
+        } else {
+            // Production environment (App Hosting with secret)
+            console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
+            
             console.log(
               "[DEBUG] Secret first 100 chars:",
-              JSON.stringify(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.slice(0, 100))
+              JSON.stringify(serviceAccountString.slice(0, 100))
             );
-            
-            console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
             
             let decodedString = serviceAccountString;
             // A heuristic to check for base64. A more robust check might be needed if other strings trigger this.
@@ -67,13 +77,6 @@ function initializeFirebaseAdmin() {
 
             adminApp = initializeApp({
                 credential: cert(serviceAccount),
-                storageBucket: "cellular-data-streamer.firebasestorage.app"
-            }, appName);
-            
-        } else {
-            // Local development environment (relies on ADC from `gcloud auth application-default login`)
-            console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
-            adminApp = initializeApp({
                 storageBucket: "cellular-data-streamer.firebasestorage.app"
             }, appName);
         }
