@@ -5,6 +5,9 @@ import { getStorage, Storage } from "firebase-admin/storage";
 let adminApp: App | null = null;
 let adminStorage: Storage | null = null;
 
+// A wrapper to ensure initialization is only attempted once.
+let adminInitPromise: Promise<{ adminApp: App; adminStorage: Storage; }> | null = null;
+
 async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStorage: Storage }> {
     if (adminApp && adminStorage) {
         return { adminApp, adminStorage };
@@ -19,10 +22,11 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
     
-    // Condition for local development vs. production.
+    // This is the key condition for distinguishing local dev from production.
+    // In App Hosting, this secret WILL be present. Locally, it will not.
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON.trim() === '') {
-        // Local development: Use Application Default Credentials
-        console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
+        // LOCAL DEVELOPMENT: Use Application Default Credentials.
+        console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON found. Using Application Default Credentials for local dev.");
         adminApp = initializeApp({
             storageBucket: "cellular-data-streamer.firebasestorage.app"
         }, appName);
@@ -30,26 +34,39 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
 
-    // Production environment (App Hosting with secret)
+    // PRODUCTION: Parse the secret from the environment variable.
     console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
     
-    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    
-    let serviceAccount: ServiceAccount;
-    try {
-        // First parse turns the string literal into a JSON string.
-        const onceParsed = JSON.parse(serviceAccountString);
-        
-        // If it's still a string (due to double-encoding), parse it again.
-        const twiceParsed = typeof onceParsed === 'string' ? JSON.parse(onceParsed) : onceParsed;
+    let serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    console.log("[DEBUG] Raw secret first 100 chars:", serviceAccountString.slice(0, 100));
 
-        // The parsed object might have snake_case keys, which we need to map to our camelCase ServiceAccount type
-        const a: any = twiceParsed;
+    let serviceAccount: ServiceAccount;
+
+    try {
+        // Step 0: Remove potential outer quotes if the whole thing is a string literal
+        if (serviceAccountString.startsWith('"') && serviceAccountString.endsWith('"')) {
+            serviceAccountString = serviceAccountString.slice(1, -1);
+        }
+
+        // Step 1: Un-escape the inner quotes.
+        serviceAccountString = serviceAccountString.replace(/\\"/g, '"');
+        
+        // Step 2 & 3: Parse the now-clean JSON string.
+        let parsed = JSON.parse(serviceAccountString);
+
+        // It might be double-encoded, so if it's still a string, parse again.
+        const finalParsed = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+        const a: any = finalParsed;
+
+        // Step 4: Fix newlines in private key and map to ServiceAccount type.
         serviceAccount = {
             projectId: a.project_id,
             clientEmail: a.client_email,
-            privateKey: a.private_key.replace(/\\n/g, '\n') // Fix for escaped newlines in private_key
+            privateKey: a.private_key.replace(/\\n/g, '\n'),
         };
+
+        // For debugging: log the parsed credential object, redacting the private key.
+        console.log('[DEBUG] Parsed credential object:', JSON.stringify({ ...serviceAccount, privateKey: '[REDACTED]' }));
         
     } catch (e: any) {
         console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
@@ -69,8 +86,6 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
     return { adminApp, adminStorage };
 }
 
-// A wrapper to ensure initialization is only attempted once.
-let adminInitPromise: Promise<{ adminApp: App; adminStorage: Storage; }> | null = null;
 
 function getInitializedAdmin() {
     if (!adminInitPromise) {
@@ -78,7 +93,6 @@ function getInitializedAdmin() {
     }
     return adminInitPromise;
 }
-
 
 export async function getAdminStorage(): Promise<Storage> {
     try {
