@@ -24,8 +24,7 @@ function initializeFirebaseAdmin() {
     try {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         
-        // Check if the secret is missing, empty, or just whitespace.
-        // This is the condition for local development.
+        // Check if the secret is missing or empty. This is the condition for local development.
         if (!serviceAccountString || serviceAccountString.trim() === '') {
              // Local development environment (relies on ADC from `gcloud auth application-default login`)
             console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
@@ -36,35 +35,23 @@ function initializeFirebaseAdmin() {
         } else {
             // Production environment (App Hosting with secret)
             console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
-            
             console.log(
               "[DEBUG] Secret first 100 chars:",
               JSON.stringify(serviceAccountString.slice(0, 100))
             );
-            
-            let decodedString = serviceAccountString;
-            // A heuristic to check for base64. A more robust check might be needed if other strings trigger this.
-            if (/^[a-zA-Z0-9+/=]+$/.test(decodedString.trim())) {
-                try {
-                    const fromBase64 = Buffer.from(decodedString, "base64").toString("utf8");
-                     // If decoding results in a string that looks like JSON, use it.
-                    if (fromBase64.trim().startsWith('{')) {
-                        console.log("[INFO] Secret appears to be Base64-encoded. Using decoded value.");
-                        decodedString = fromBase64;
-                    }
-                } catch (e) {
-                    console.log("[INFO] Could not decode secret from base64, using as-is.", e);
-                }
-            }
 
             let serviceAccount: ServiceAccount;
             try {
-                // Try parsing once for standard JSON
-                serviceAccount = JSON.parse(decodedString);
+                // First parse turns the string literal into a JSON string.
+                let parsed = JSON.parse(serviceAccountString);
+
+                // If the result is still a string (double-encoded), parse it again.
+                // Otherwise, use the parsed object directly.
+                serviceAccount = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+                
             } catch (e) {
-                // If that fails, it's likely double-encoded. Parse it again.
-                console.log("[INFO] Direct parse failed. Attempting to parse double-encoded JSON.");
-                serviceAccount = JSON.parse(JSON.parse(decodedString));
+                console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
+                throw new Error("The service account secret is not valid JSON, even after attempting to parse it as single or double-encoded.");
             }
             
             // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
