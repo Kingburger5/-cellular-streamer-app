@@ -4,6 +4,7 @@
 import { getAdminStorage } from "@/lib/firebase-admin";
 import type { UploadedFile, FileContent, DataPoint } from "@/lib/types";
 import { extractData } from "@/ai/flows/extract-data-flow";
+import { GoogleAuth } from 'google-auth-library';
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
@@ -172,19 +173,37 @@ export async function deleteFileAction(
 }
 
 export async function getDownloadUrlAction(fileName: string): Promise<string> {
-  const adminStorage = await getAdminStorage();
-  const bucket = adminStorage.bucket(BUCKET_NAME);
-  const file = bucket.file(`uploads/${fileName}`);
+  const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (!serviceAccountString) {
+    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON is not set in the environment.");
+  }
   
-  // Use the Firebase Admin SDK's built-in signing capabilities.
-  // This will use the credentials the SDK was initialized with.
-  const [url] = await file.getSignedUrl({
-    action: "read",
+  // The private key from environment variables often has escaped newlines.
+  // We need to replace them with actual newlines for the PEM format to be valid.
+  const serviceAccount = JSON.parse(serviceAccountString);
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  }
+
+  const auth = new GoogleAuth({
+    credentials: {
+      client_email: serviceAccount.client_email,
+      private_key: serviceAccount.private_key,
+    },
+    scopes: ['https://www.googleapis.com/auth/devstorage.read_only'],
+  });
+
+  const client = await auth.getClient();
+  const projectId = await auth.getProjectId();
+  const url = `https://storage.googleapis.com/${BUCKET_NAME}/uploads/${fileName}`;
+
+  const signedUrl = await client.sign(url, {
+    method: 'GET',
     expires: Date.now() + 15 * 60 * 1000, // 15 minutes
     responseDisposition: `attachment; filename="${fileName}"`,
   });
 
-  return url;
+  return signedUrl;
 }
 
 
