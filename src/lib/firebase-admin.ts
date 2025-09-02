@@ -38,37 +38,40 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
     console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
     
     let serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    console.log("[DEBUG] Raw secret first 100 chars:", serviceAccountString.slice(0, 100));
-
+    
+    let finalParsed: any;
     let serviceAccount: ServiceAccount;
 
     try {
-        // Step 0: Remove potential outer quotes if the whole thing is a string literal
+        // Step 1: Remove potential outer quotes if the whole thing is a string literal
         if (serviceAccountString.startsWith('"') && serviceAccountString.endsWith('"')) {
             serviceAccountString = serviceAccountString.slice(1, -1);
         }
 
-        // Step 1: Un-escape the inner quotes. This is critical.
+        // Step 2: Un-escape the inner quotes. This is critical for double-encoded secrets.
         serviceAccountString = serviceAccountString.replace(/\\"/g, '"');
         
-        // Step 2 & 3: Parse the now-clean JSON string.
-        let finalParsed = JSON.parse(serviceAccountString);
+        // Step 3: Parse the now-clean JSON string.
+        finalParsed = JSON.parse(serviceAccountString);
 
-        // It might be double-encoded, so if it's still a string, parse again.
-        if (typeof finalParsed === 'string') {
-          finalParsed = JSON.parse(finalParsed);
-        }
-        
         // For debugging: log the parsed credential object, redacting the private key.
         console.log('[DEBUG] Parsed credential object:', JSON.stringify({ ...finalParsed, private_key: '[REDACTED]' }));
 
-        // Step 4: The key is not a valid PEM format until newlines are un-escaped.
-        const privateKey = finalParsed.private_key.replace(/\\n/g, '\n');
+        // Step 4: The key is not a valid PEM format until newlines are correctly handled.
+        // This is the definitive fix for "Invalid PEM" errors.
+        let rawKey = finalParsed.private_key;
+
+        // Step 4a: Trim any whitespace or quotes from the key itself.
+        rawKey = rawKey.trim().replace(/^"+|"+$/g, '');
+        
+        // Step 4b: Replace all forms of escaped newlines with actual newlines.
+        // Handles both \\n (from double escaping) and \n.
+        rawKey = rawKey.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n');
 
         serviceAccount = {
             projectId: finalParsed.project_id,
             clientEmail: finalParsed.client_email,
-            privateKey: privateKey,
+            privateKey: rawKey,
         };
         
     } catch (e: any) {
