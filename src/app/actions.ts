@@ -146,7 +146,7 @@ export async function processFileAction(
 
     } catch(error: any) {
         console.error(`[SERVER_ERROR] Generic processing error for file ${filename}:`, error);
-        return { error: `An unexpected error occurred during file processing. Code: ${error.code}. Check server logs.`};
+        return { error: `An unexpected error occurred during file processing. Code: ${error.code || 'N/A'}. Check server logs.`};
     }
 }
 

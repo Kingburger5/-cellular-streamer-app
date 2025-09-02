@@ -25,9 +25,10 @@ function initializeFirebaseAdmin() {
         
         if (serviceAccountString) {
             // Production environment (App Hosting with secret)
+            console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
             const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
             
-            // The critical fix for the "Invalid PEM" error
+            // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
             if (serviceAccount.private_key) {
                 serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
             }
@@ -36,10 +37,10 @@ function initializeFirebaseAdmin() {
                 credential: cert(serviceAccount),
                 storageBucket: "cellular-data-streamer.firebasestorage.app"
             }, appName);
-            console.log("[INFO] Initialized Firebase Admin SDK with service account from secret.");
+            
 
         } else {
-            // Local development environment (relies on ADC or GOOGLE_APPLICATION_CREDENTIALS file path)
+            // Local development environment (relies on ADC from `gcloud auth application-default login`)
             console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON secret found. Using Application Default Credentials for local development.");
             adminApp = initializeApp({
                 storageBucket: "cellular-data-streamer.firebasestorage.app"
@@ -52,7 +53,7 @@ function initializeFirebaseAdmin() {
         console.error("[CRITICAL] Firebase Admin SDK initialization error:", error);
         // Provide a clearer error message that helps diagnose the issue
         const detail = error.message.includes("Invalid PEM") 
-            ? "The private key in the service account credentials is malformed. This often happens due to incorrect newline character escaping."
+            ? "The private key in the service account credentials is malformed. This often happens due to incorrect newline character escaping when passed as an environment variable."
             : error.message;
         throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Detail: ${detail}`);
     }
