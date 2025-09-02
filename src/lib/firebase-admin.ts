@@ -1,5 +1,5 @@
 
-import { initializeApp, getApps, App, cert } from "firebase-admin/app";
+import { initializeApp, getApps, App, cert, ServiceAccount } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 
 let adminApp: App | null = null;
@@ -22,13 +22,37 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
     
-    // When deployed on App Hosting, the SDK automatically uses Application Default Credentials.
-    // No service account JSON is needed. For local development, ensure you've run
-    // `gcloud auth application-default login`.
-    console.log("[INFO] Initializing Firebase Admin SDK with Application Default Credentials.");
+    // Check for the service account JSON in the environment variable.
+    // This is the recommended approach for App Hosting to provide full admin privileges.
+    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    let credential;
+
+    if (serviceAccountString) {
+        console.log("[INFO] Initializing Firebase Admin SDK with service account from environment variable.");
+        try {
+            const serviceAccount: ServiceAccount = JSON.parse(serviceAccountString);
+            
+            // The private key from environment variables often has escaped newlines.
+            // We need to replace them with actual newlines for the PEM format to be valid.
+            if (serviceAccount.private_key) {
+                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            }
+
+            credential = cert(serviceAccount);
+        } catch (error) {
+            console.error("[CRITICAL] Failed to parse service account JSON from environment variable.", error);
+            throw new Error("Could not initialize Firebase Admin SDK. The service account JSON is malformed.");
+        }
+    } else {
+        // Fallback to Application Default Credentials for local development or if the env var is not set.
+        // This may have limited permissions (e.g., cannot sign URLs).
+        console.log("[INFO] Initializing Firebase Admin SDK with Application Default Credentials.");
+        credential = undefined; // initializeApp will use ADC by default
+    }
     
     try {
         adminApp = initializeApp({
+            credential,
             storageBucket: "cellular-data-streamer.firebasestorage.app"
         }, appName);
         
@@ -38,10 +62,8 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
 
     } catch (e: any) {
         console.error("[CRITICAL] Failed to initialize Firebase Admin SDK.", e);
-        const detail = e instanceof Error 
-            ? `Details: ${e.message}`
-            : "An unknown error occurred.";
-        throw new Error(`Failed to initialize Firebase Admin SDK. This can happen if Application Default Credentials are not configured correctly. ${detail}`);
+        const detail = e instanceof Error ? `Details: ${e.message}` : "An unknown error occurred.";
+        throw new Error(`Failed to initialize Firebase Admin SDK. ${detail}`);
     }
 }
 
