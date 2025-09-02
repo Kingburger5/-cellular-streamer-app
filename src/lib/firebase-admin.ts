@@ -22,9 +22,8 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
     
-    // Check for either environment variable, preferring the standard one.
-    // This handles the case where the real secret is in the non-standard variable.
-    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ?? process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS;
+    // Use the standard GOOGLE_APPLICATION_CREDENTIALS_JSON variable.
+    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
 
     if (!serviceAccountString || serviceAccountString.trim() === '') {
         // LOCAL DEVELOPMENT: Use Application Default Credentials.
@@ -87,4 +86,3 @@ export async function getAdminStorage(): Promise<Storage> {
         throw new Error("Could not get Firebase Admin Storage instance. Initialization may have failed.");
     }
 }
-
