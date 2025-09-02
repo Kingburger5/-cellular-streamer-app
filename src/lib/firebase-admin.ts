@@ -12,6 +12,7 @@ function initializeFirebaseAdmin() {
     }
 
     if (getApps().length > 0) {
+        // Use the already initialized app in a hot-reload scenario
         adminApp = getApps()[0]!;
         adminStorage = getStorage(adminApp);
         return { adminApp, adminStorage };
@@ -36,18 +37,23 @@ function initializeFirebaseAdmin() {
         adminApp = initializeApp({
             credential: cert(serviceAccount),
             storageBucket: "cellular-data-streamer.firebasestorage.app"
-        }, 'firebase-admin-app');
+        }, 'firebase-admin-app'); // Use a unique app name
         
         adminStorage = getStorage(adminApp);
 
     } catch (error: any) {
         console.error("[CRITICAL] Firebase Admin SDK initialization error:", error);
+        // Throw a new error to provide a clear message in the logs, including the original error.
         throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Original Error: ${error.message}`);
     }
 
     return { adminApp, adminStorage: adminStorage! };
 }
 
+/**
+ * Returns the initialized Firebase Admin Storage instance.
+ * Ensures that the initialization logic is only run once.
+ */
 function getAdminStorage(): Storage {
     if (!adminStorage) {
         initializeFirebaseAdmin();
