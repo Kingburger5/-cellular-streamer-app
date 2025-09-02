@@ -14,9 +14,13 @@ function initializeFirebaseAdmin() {
 
     // Use the first initialized app if it exists (common in serverless environments)
     if (getApps().length > 0) {
-        adminApp = getApps()[0];
-        adminStorage = getStorage(adminApp);
-        return { adminApp, adminStorage: adminStorage! };
+        const existingApp = getApps()[0];
+        // Ensure that if the existing app is used, our adminApp and adminStorage variables are set.
+        if (existingApp) {
+            adminApp = existingApp;
+            adminStorage = getStorage(adminApp);
+            return { adminApp, adminStorage: adminStorage! };
+        }
     }
 
     try {
@@ -38,7 +42,8 @@ function initializeFirebaseAdmin() {
         adminApp = initializeApp({
             credential: cert(serviceAccount),
             storageBucket: "cellular-data-streamer.firebasestorage.app"
-        });
+        }, 'firebase-admin-app'); // Assign a unique name to avoid conflicts
+        
         adminStorage = getStorage(adminApp);
 
     } catch (error: any) {
@@ -52,7 +57,8 @@ function initializeFirebaseAdmin() {
 
 function getAdminStorage(): Storage {
     // Ensure initialization is attempted on every call if not already set.
-    if (!adminStorage) {
+    // This makes the function resilient to module-level caching issues.
+    if (!adminStorage || !adminApp) {
         initializeFirebaseAdmin();
     }
     return adminStorage!;
