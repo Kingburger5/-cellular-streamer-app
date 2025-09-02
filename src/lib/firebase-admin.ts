@@ -26,7 +26,11 @@ function initializeFirebaseAdmin() {
         if (serviceAccountString) {
             // Production environment (App Hosting with secret)
             console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
-            const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
+            
+            // The service account comes in as a double-encoded JSON string. Parse it once to get the JSON string.
+            const decodedString = JSON.parse(serviceAccountString);
+            // Parse it a second time to get the actual service account object.
+            const serviceAccount = JSON.parse(decodedString) as ServiceAccount;
             
             // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
             if (serviceAccount.private_key) {
