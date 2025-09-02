@@ -22,8 +22,7 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
     
-    // This is the key condition for distinguishing local dev from production.
-    // In App Hosting, this secret WILL be present. Locally, it will not.
+    // In App Hosting, this secret WILL be present. Locally, it will be empty.
     if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON.trim() === '') {
         // LOCAL DEVELOPMENT: Use Application Default Credentials.
         console.log("[INFO] No GOOGLE_APPLICATION_CREDENTIALS_JSON found. Using Application Default Credentials for local dev.");
@@ -37,51 +36,26 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
     // PRODUCTION: Parse the secret from the environment variable.
     console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
     
-    let serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    
-    let finalParsed: any;
-    let serviceAccount: ServiceAccount;
-
     try {
-        // Step 1: Remove potential outer quotes if the whole thing is a string literal
-        if (serviceAccountString.startsWith('"') && serviceAccountString.endsWith('"')) {
-            serviceAccountString = serviceAccountString.slice(1, -1);
-        }
+        const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+        const serviceAccount: ServiceAccount = JSON.parse(serviceAccountString);
 
-        // Step 2: Un-escape the inner quotes. This is critical for double-encoded secrets.
-        serviceAccountString = serviceAccountString.replace(/\\"/g, '"');
-        
-        // Step 3: Parse the now-clean JSON string.
-        finalParsed = JSON.parse(serviceAccountString);
+        // The private_key needs to have its escaped newlines replaced with actual newlines.
+        const privateKey = serviceAccount.private_key?.replace(/\\n/g, '\n');
 
-        // For debugging: log the parsed credential object, redacting the private key.
-        console.log('[DEBUG] Parsed credential object:', JSON.stringify({ ...finalParsed, private_key: '[REDACTED]' }));
+        adminApp = initializeApp({
+            credential: cert({
+                projectId: serviceAccount.project_id,
+                clientEmail: serviceAccount.client_email,
+                privateKey: privateKey,
+            }),
+            storageBucket: "cellular-data-streamer.firebasestorage.app"
+        }, appName);
+        
+        adminStorage = getStorage(adminApp);
+        console.log("[INFO] Firebase Admin SDK initialized successfully in production.");
+        return { adminApp, adminStorage };
 
-        // Step 4: The key is not a valid PEM format until it is meticulously cleaned.
-        let rawKey = finalParsed.private_key;
-        
-        // Step 4a: Remove all leading/trailing whitespace.
-        rawKey = rawKey.trim();
-        
-        // Step 4b: Remove wrapping quotes if any exist.
-        rawKey = rawKey.replace(/^"+|"+$/g, '');
-        
-        // Step 4c: Replace all forms of escaped newlines with actual newlines.
-        rawKey = rawKey.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n');
-
-        // Step 4d: Ensure the PEM headers and footers are on their own lines.
-        rawKey = rawKey.replace(/(-----BEGIN PRIVATE KEY-----)/, '$1\n')
-                       .replace(/(-----END PRIVATE KEY-----)/, '\n$1');
-
-        // DEBUG: Safely log the normalized key to verify its format
-        console.log("[DEBUG] Private key preview:", rawKey.slice(0, 30) + '...' + rawKey.slice(-30));
-        
-        serviceAccount = {
-            projectId: finalParsed.project_id,
-            clientEmail: finalParsed.client_email,
-            privateKey: rawKey,
-        };
-        
     } catch (e: any) {
         console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
         const detail = e instanceof Error 
@@ -89,15 +63,6 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
             : "An unknown parsing error occurred.";
         throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Detail: ${detail}`);
     }
-
-    adminApp = initializeApp({
-        credential: cert(serviceAccount),
-        storageBucket: "cellular-data-streamer.firebasestorage.app"
-    }, appName);
-    
-    adminStorage = getStorage(adminApp);
-    console.log("[INFO] Firebase Admin SDK initialized successfully in production.");
-    return { adminApp, adminStorage };
 }
 
 
