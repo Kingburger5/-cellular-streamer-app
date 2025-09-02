@@ -51,9 +51,12 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
             return null;
         }
 
+        // The length field in GUANO is the length of the metadata *following* the length field and keyword.
+        // The total size of the block from the start of the 'GUANO' keyword is chunkLength.
         const chunkLength = chunk.readUInt32LE(lengthOffset);
         
         if (chunkLength > chunk.length - guanoIndex || chunkLength <= 0) {
+            console.log(`[SERVER_WARNING] Invalid GUANO length field. Length: ${chunkLength}, Buffer available: ${chunk.length - guanoIndex}`);
             return null;
         }
 
@@ -61,17 +64,13 @@ function findGuanoMetadataInChunk(chunk: Buffer): string | null {
         const metadataEnd = metadataStart + chunkLength;
 
         if (metadataEnd > chunk.length) {
+            console.log(`[SERVER_WARNING] GUANO metadata block exceeds buffer length.`);
             return null;
         }
         
         const rawMetadataSlice = chunk.subarray(metadataStart, metadataEnd);
-        let metadataContent = '';
-        for (let i = 0; i < rawMetadataSlice.length; i++) {
-            const charCode = rawMetadataSlice[i];
-            if ((charCode >= 32 && charCode <= 126) || charCode === 10 || charCode === 13 || charCode === 9) {
-                 metadataContent += String.fromCharCode(charCode);
-            }
-        }
+        // GUANO metadata is specified to be UTF-8
+        let metadataContent = new TextDecoder('utf-8').decode(rawMetadataSlice);
         
         return metadataContent.trim();
     } catch (error) {
@@ -114,7 +113,7 @@ export async function processFileAction(
                  fileContentForClient = "No GUANO metadata found in this binary file.";
             } else {
                  console.log(`[SERVER_INFO] Step 2 Success: Found GUANO metadata block.`);
-                 fileContentForClient = rawMetadata.replace(/\|/g, '\n'); 
+                 fileContentForClient = rawMetadata;
             }
         } else {
             // For text files, the whole content is the metadata

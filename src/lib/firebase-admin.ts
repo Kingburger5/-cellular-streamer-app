@@ -28,12 +28,15 @@ function initializeFirebaseAdmin() {
             const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
             
             // The critical fix for the "Invalid PEM" error
-            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            if (serviceAccount.private_key) {
+                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            }
 
             adminApp = initializeApp({
                 credential: cert(serviceAccount),
                 storageBucket: "cellular-data-streamer.firebasestorage.app"
             }, appName);
+            console.log("[INFO] Initialized Firebase Admin SDK with service account from secret.");
 
         } else {
             // Local development environment (relies on ADC or GOOGLE_APPLICATION_CREDENTIALS file path)
@@ -47,7 +50,11 @@ function initializeFirebaseAdmin() {
 
     } catch (error: any) {
         console.error("[CRITICAL] Firebase Admin SDK initialization error:", error);
-        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Original Error: ${error.message}`);
+        // Provide a clearer error message that helps diagnose the issue
+        const detail = error.message.includes("Invalid PEM") 
+            ? "The private key in the service account credentials is malformed. This often happens due to incorrect newline character escaping."
+            : error.message;
+        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Detail: ${detail}`);
     }
 
     return { adminApp, adminStorage: adminStorage! };
