@@ -36,9 +36,11 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
       startAudioTransition(async () => {
           toast({ title: "Generating secure download link for audio..." });
           try {
-            const url = await getDownloadUrlAction(fileContent.name);
-            setAudioUrl(url);
-            toast({ title: "Audio ready for playback." });
+            if (fileContent.name) {
+                const url = await getDownloadUrlAction(fileContent.name);
+                setAudioUrl(url);
+                toast({ title: "Audio ready for playback." });
+            }
           } catch (e) {
             const message = e instanceof Error ? e.message : "An unknown error occurred.";
             toast({ title: "Failed to get audio URL", description: message, variant: "destructive" });
@@ -142,7 +144,7 @@ export function FileDisplay({ fileContent, isLoading, error }: FileDisplayProps)
                   <SummaryViewer fileContent={fileContent} />
               </TabsContent>
               <TabsContent value="visualization" className="flex-grow h-0 mt-4">
-                  <DataVisualizer data={fileContent.extractedData} fileName={fileContent.name} isLoading={isDataLoading}/>
+                  <DataVisualizer data={fileContent.extractedData || null} fileName={fileContent.name} isLoading={isDataLoading}/>
               </TabsContent>
               <TabsContent value="audio" className="flex-grow h-0 mt-4">
                   <Card className="h-full">

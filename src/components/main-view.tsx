@@ -123,13 +123,13 @@ export function MainView({ initialFiles }: MainViewProps) {
   const handleDeleteFile = useCallback(async (name: string) => {
      startTransition(async () => {
         const result = await deleteFileAction(name);
-        if (result.success) {
+        if ('success' in result && result.success) {
             toast({
                 title: "File Deleted",
                 description: `${name} has been deleted from storage.`,
             });
             await refreshFileList();
-        } else {
+        } else if ('error' in result) {
              toast({
                 title: "Deletion Failed",
                 description: result.error,

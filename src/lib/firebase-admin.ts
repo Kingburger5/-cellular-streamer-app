@@ -28,17 +28,20 @@ function initializeFirebaseAdmin() {
             
             let serviceAccount: ServiceAccount;
             try {
-                // First, try to parse the string directly, assuming it's single-encoded.
+                 // Try parsing once, for single-encoded JSON
                 serviceAccount = JSON.parse(serviceAccountString);
             } catch (e) {
-                // If that fails, it's likely double-encoded. Parse it again.
+                 // If that fails, it's likely double-encoded. Parse it again.
                 console.log("[INFO] Direct parse failed. Attempting to parse double-encoded JSON.");
                 serviceAccount = JSON.parse(JSON.parse(serviceAccountString));
             }
             
             // The critical fix for the "Invalid PEM" error caused by environment variable escaping.
-            if (serviceAccount.private_key) {
-                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            // Note: The type expects `privateKey` (camelCase) but the JSON from Google uses `private_key` (snake_case).
+            // We cast to `any` to handle this discrepancy without TypeScript errors.
+            const aServiceAccount = serviceAccount as any;
+            if (aServiceAccount.private_key) {
+                aServiceAccount.private_key = aServiceAccount.private_key.replace(/\\n/g, '\n');
             }
 
             adminApp = initializeApp({

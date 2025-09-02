@@ -15,18 +15,24 @@ export async function getFilesAction(): Promise<UploadedFile[]> {
 
         const fileDetails = await Promise.all(
             files.map(async (file) => {
-                if (file.name.endsWith('/')) { // Skip directories
+                // Skip objects that represent directories
+                if (file.name.endsWith('/')) {
                     return null;
                 }
                 const [metadata] = await file.getMetadata();
-                return {
-                    name: metadata.name.replace('uploads/', ''), // Return just the filename
-                    size: Number(metadata.size),
-                    uploadDate: new Date(metadata.timeCreated),
-                };
+                // Ensure name and timeCreated are defined before creating the object
+                if (metadata.name && metadata.timeCreated) {
+                    return {
+                        name: metadata.name.replace('uploads/', ''), // Return just the filename
+                        size: Number(metadata.size) || 0,
+                        uploadDate: new Date(metadata.timeCreated),
+                    };
+                }
+                return null;
             })
         );
         
+        // Filter out any null results and sort the valid files
         return fileDetails
             .filter((file): file is UploadedFile => file !== null)
             .sort((a, b) => b.uploadDate.getTime() - a.uploadDate.getTime());
