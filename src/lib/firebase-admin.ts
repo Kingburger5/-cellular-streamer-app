@@ -48,25 +48,28 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
             serviceAccountString = serviceAccountString.slice(1, -1);
         }
 
-        // Step 1: Un-escape the inner quotes.
+        // Step 1: Un-escape the inner quotes. This is critical.
         serviceAccountString = serviceAccountString.replace(/\\"/g, '"');
         
         // Step 2 & 3: Parse the now-clean JSON string.
-        let parsed = JSON.parse(serviceAccountString);
+        let finalParsed = JSON.parse(serviceAccountString);
 
         // It might be double-encoded, so if it's still a string, parse again.
-        const finalParsed = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
-        const a: any = finalParsed;
-
-        // Step 4: Fix newlines in private key and map to ServiceAccount type.
-        serviceAccount = {
-            projectId: a.project_id,
-            clientEmail: a.client_email,
-            privateKey: a.private_key.replace(/\\n/g, '\n'),
-        };
-
+        if (typeof finalParsed === 'string') {
+          finalParsed = JSON.parse(finalParsed);
+        }
+        
         // For debugging: log the parsed credential object, redacting the private key.
-        console.log('[DEBUG] Parsed credential object:', JSON.stringify({ ...serviceAccount, privateKey: '[REDACTED]' }));
+        console.log('[DEBUG] Parsed credential object:', JSON.stringify({ ...finalParsed, private_key: '[REDACTED]' }));
+
+        // Step 4: The key is not a valid PEM format until newlines are un-escaped.
+        const privateKey = finalParsed.private_key.replace(/\\n/g, '\n');
+
+        serviceAccount = {
+            projectId: finalParsed.project_id,
+            clientEmail: finalParsed.client_email,
+            privateKey: privateKey,
+        };
         
     } catch (e: any) {
         console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
