@@ -28,19 +28,18 @@ function initializeFirebaseAdmin() {
             console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
             
             let decodedString = serviceAccountString;
-            // Attempt to decode from base64, as this is a common way secrets are handled.
-            try {
-                // A simple heuristic to check for base64. A more robust check might be needed if other strings trigger this.
-                if (/^[a-zA-Z0-9+/=]+$/.test(decodedString.trim())) {
+            // A heuristic to check for base64. A more robust check might be needed if other strings trigger this.
+            if (/^[a-zA-Z0-9+/=]+$/.test(decodedString.trim())) {
+                try {
                     const fromBase64 = Buffer.from(decodedString, "base64").toString("utf8");
                      // If decoding results in a string that looks like JSON, use it.
                     if (fromBase64.trim().startsWith('{')) {
                         console.log("[INFO] Secret appears to be Base64-encoded. Using decoded value.");
                         decodedString = fromBase64;
                     }
+                } catch (e) {
+                    console.log("[INFO] Could not decode secret from base64, using as-is.", e);
                 }
-            } catch (e) {
-                console.log("[INFO] Could not decode secret from base64, using as-is.", e);
             }
 
             let serviceAccount: ServiceAccount;
