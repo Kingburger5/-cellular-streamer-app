@@ -1,5 +1,5 @@
 
-import { initializeApp, getApps, App, cert, ServiceAccount } from "firebase-admin/app";
+import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getStorage, Storage } from "firebase-admin/storage";
 
 let adminApp: App | null = null;
@@ -22,51 +22,28 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         return { adminApp, adminStorage };
     }
     
-    // Use the standard GOOGLE_APPLICATION_CREDENTIALS_JSON variable.
-    const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-
-    if (!serviceAccountString || serviceAccountString.trim() === '') {
-        // LOCAL DEVELOPMENT: Use Application Default Credentials.
-        console.log("[INFO] No service account JSON found in environment. Using Application Default Credentials for local dev.");
-        adminApp = initializeApp({
-            storageBucket: "cellular-data-streamer.firebasestorage.app"
-        }, appName);
-        adminStorage = getStorage(adminApp);
-        return { adminApp, adminStorage };
-    }
-
-    // PRODUCTION: Parse the secret from the environment variable.
-    console.log("[INFO] Initializing Firebase Admin SDK with service account from secret.");
+    // When deployed on App Hosting, the SDK automatically uses Application Default Credentials.
+    // No service account JSON is needed. For local development, ensure you've run
+    // `gcloud auth application-default login`.
+    console.log("[INFO] Initializing Firebase Admin SDK with Application Default Credentials.");
     
     try {
-        const serviceAccount: ServiceAccount = JSON.parse(serviceAccountString);
-
-        // ** THE FIX **: The private key from JSON has escaped newlines (\\n).
-        // We must replace them with actual newline characters (\n) for the PEM format to be valid.
-        if (serviceAccount.private_key) {
-            serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-            console.debug("[DEBUG] Private key preview (start):", serviceAccount.private_key.slice(0, 30));
-            console.debug("[DEBUG] Private key preview (end):", serviceAccount.private_key.slice(-30));
-        }
-
         adminApp = initializeApp({
-            credential: cert(serviceAccount),
             storageBucket: "cellular-data-streamer.firebasestorage.app"
         }, appName);
         
         adminStorage = getStorage(adminApp);
-        console.log("[INFO] Firebase Admin SDK initialized successfully in production.");
+        console.log("[INFO] Firebase Admin SDK initialized successfully.");
         return { adminApp, adminStorage };
 
     } catch (e: any) {
-        console.error("[CRITICAL] Failed to parse Firebase service account JSON from secret.", e);
+        console.error("[CRITICAL] Failed to initialize Firebase Admin SDK.", e);
         const detail = e instanceof Error 
-            ? `The service account credentials from the secret are not valid. Details: ${e.message}`
-            : "An unknown parsing error occurred.";
-        throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Detail: ${detail}`);
+            ? `Details: ${e.message}`
+            : "An unknown error occurred.";
+        throw new Error(`Failed to initialize Firebase Admin SDK. This can happen if Application Default Credentials are not configured correctly. ${detail}`);
     }
 }
-
 
 function getInitializedAdmin() {
     if (!adminInitPromise) {
