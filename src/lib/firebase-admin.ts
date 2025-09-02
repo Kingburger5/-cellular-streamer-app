@@ -54,6 +54,8 @@ function initializeFirebaseAdmin() {
         // Provide a clearer error message that helps diagnose the issue
         const detail = error.message.includes("Invalid PEM") 
             ? "The private key in the service account credentials is malformed. This often happens due to incorrect newline character escaping when passed as an environment variable."
+            : error.message.includes("JSON") 
+            ? `The service account credentials from the secret are not valid JSON. Details: ${error.message}`
             : error.message;
         throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs. Detail: ${detail}`);
     }
