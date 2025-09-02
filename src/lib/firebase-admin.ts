@@ -7,26 +7,20 @@ let adminApp: App | null = null;
 let adminStorage: Storage | null = null;
 
 function initializeFirebaseAdmin() {
-    // If already initialized, return the existing instances
-    if (adminApp && adminStorage) {
-        return { adminApp, adminStorage };
+    if (adminApp) {
+        return { adminApp, adminStorage: adminStorage! };
     }
 
-    // Use the first initialized app if it exists (common in serverless environments)
     if (getApps().length > 0) {
-        const existingApp = getApps()[0];
-        // Ensure that if the existing app is used, our adminApp and adminStorage variables are set.
-        if (existingApp) {
-            adminApp = existingApp;
-            adminStorage = getStorage(adminApp);
-            return { adminApp, adminStorage: adminStorage! };
-        }
+        adminApp = getApps()[0]!;
+        adminStorage = getStorage(adminApp);
+        return { adminApp, adminStorage };
     }
 
     try {
         const serviceAccountString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         if (!serviceAccountString) {
-            throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set. This is required for server-side operations.");
+            throw new Error("The GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set.");
         }
         
         const serviceAccount = JSON.parse(serviceAccountString) as ServiceAccount;
@@ -42,13 +36,12 @@ function initializeFirebaseAdmin() {
         adminApp = initializeApp({
             credential: cert(serviceAccount),
             storageBucket: "cellular-data-streamer.firebasestorage.app"
-        }, 'firebase-admin-app'); // Assign a unique name to avoid conflicts
+        }, 'firebase-admin-app');
         
         adminStorage = getStorage(adminApp);
 
     } catch (error: any) {
         console.error("[CRITICAL] Firebase Admin SDK initialization error:", error);
-        // Include the original error message for better debugging.
         throw new Error(`Failed to initialize Firebase Admin SDK. Check server logs for details. Original Error: ${error.message}`);
     }
 
@@ -56,9 +49,7 @@ function initializeFirebaseAdmin() {
 }
 
 function getAdminStorage(): Storage {
-    // Ensure initialization is attempted on every call if not already set.
-    // This makes the function resilient to module-level caching issues.
-    if (!adminStorage || !adminApp) {
+    if (!adminStorage) {
         initializeFirebaseAdmin();
     }
     return adminStorage!;
