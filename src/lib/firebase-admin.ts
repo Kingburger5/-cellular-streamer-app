@@ -44,10 +44,9 @@ async function initializeFirebaseAdminImpl(): Promise<{ adminApp: App; adminStor
         // ** THE FIX **: The private key from JSON has escaped newlines (\\n).
         // We must replace them with actual newline characters (\n) for the PEM format to be valid.
         if (serviceAccount.private_key) {
-            console.debug("[DEBUG] Private key before normalization starts with:", serviceAccount.private_key.slice(0, 30));
             serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-            console.debug("[DEBUG] Private key after normalization starts with:", serviceAccount.private_key.slice(0, 30));
-            console.debug("[DEBUG] Private key after normalization ends with:", serviceAccount.private_key.slice(-30));
+            console.debug("[DEBUG] Private key preview (start):", serviceAccount.private_key.slice(0, 30));
+            console.debug("[DEBUG] Private key preview (end):", serviceAccount.private_key.slice(-30));
         }
 
         adminApp = initializeApp({
