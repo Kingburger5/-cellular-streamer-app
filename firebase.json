@@ -9,6 +9,17 @@
     "frameworksBackend": {
       "id": "my-app",
       "region": "asia-east1"
-    }
+    },
+    "headers": [
+      {
+        "source": "/api/**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          }
+        ]
+      }
+    ]
   }
 }
