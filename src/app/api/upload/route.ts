@@ -1,59 +1,59 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { format } from 'date-fns';
 import { getAdminStorage } from "@/lib/firebase-admin";
 
 const BUCKET_NAME = "cellular-data-streamer.firebasestorage.app";
 
-async function logRequestToSheet(request: NextRequest) {
-    // This functionality has been temporarily disabled.
-    console.log("Google Sheets logging is disabled.");
-}
-
-
 /**
- * Handles file uploads from transmission modules.
- * It saves the file to Firebase Storage inside the 'uploads' folder.
+ * Acts as a secure relay for file uploads from SIM7600 modules.
+ * It accepts the raw file in the request body and uses the Firebase Admin SDK
+ * to save it to a private Firebase Storage bucket.
+ * The original filename is expected in the 'x-original-filename' header.
  */
 export async function POST(request: NextRequest) {
-    
-    await logRequestToSheet(request);
-
     try {
-        const contentTypeHeader = request.headers.get('content-type');
-        if (!contentTypeHeader) {
-             return NextResponse.json({ error: "Missing Content-Type header." }, { status: 400 });
-        }
-        
+        // Get the raw file data from the request body.
         const fileBuffer = await request.arrayBuffer();
 
-        if (fileBuffer.byteLength === 0) {
-             return NextResponse.json({ error: "Empty file content." }, { status: 400 });
+        if (!fileBuffer || fileBuffer.byteLength === 0) {
+            console.warn("[SERVER] Upload attempt with empty file rejected.");
+            return NextResponse.json({ error: "File content is empty." }, { status: 400 });
         }
-        
-        const originalFilename = request.headers.get('x-original-filename') || `upload-${Date.now()}`;
+
+        // The cellular module should provide the intended filename in this header.
+        const originalFilename = request.headers.get('x-original-filename');
+        if (!originalFilename) {
+            console.warn("[SERVER] Upload attempt without 'x-original-filename' header rejected.");
+            return NextResponse.json({ error: "Missing 'x-original-filename' header." }, { status: 400 });
+        }
+
         const filePath = `uploads/${originalFilename}`;
-        
+        const contentType = request.headers.get('content-type') || 'application/octet-stream';
+
+        // Use the Admin SDK to upload the file buffer to the bucket.
         const adminStorage = await getAdminStorage();
-        const bucket = adminStorage.bucket(BUCKET_-NAME);
+        const bucket = adminStorage.bucket(BUCKET_NAME);
         const file = bucket.file(filePath);
 
         await file.save(Buffer.from(fileBuffer), {
-            metadata: {
-                contentType: contentTypeHeader,
-            }
+            metadata: { contentType }
         });
-        
-        console.log(`[SERVER] Successfully uploaded to Firebase Storage: ${filePath}`);
-        
+
+        console.log(`[SERVER] Relay upload successful. Saved '${originalFilename}' to Firebase Storage.`);
+
+        // Notify any connected clients that a new file has arrived.
+        const channel = new BroadcastChannel('new-upload');
+        channel.postMessage({ filename: originalFilename });
+        channel.close();
+
         return NextResponse.json({
-            message: "File uploaded successfully to Firebase Storage.",
+            message: "File uploaded successfully via relay.",
             filename: originalFilename,
         }, { status: 200 });
 
     } catch (error: any) {
-        console.error("[SERVER] Unhandled error in upload handler:", error);
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred on the server.";
+        console.error("[SERVER] Unhandled error in upload relay handler:", error);
+        const errorMessage = error instanceof Error ? error.message : "An unknown server error occurred.";
         return NextResponse.json(
             { error: "Internal Server Error", details: errorMessage },
             { status: 500 }
