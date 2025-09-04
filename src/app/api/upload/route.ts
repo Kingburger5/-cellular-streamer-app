@@ -27,13 +27,18 @@
      * It now supports chunked uploads.
      */
     export async function POST(request: NextRequest) {
+        console.log(`[SERVER] Received new POST request to /api/upload.`);
         try {
             // Get headers for chunking
             const originalFilename = request.headers.get('x-original-filename');
             const chunkIndexStr = request.headers.get('x-chunk-index');
             const totalChunksStr = request.headers.get('x-total-chunks');
 
+            console.log("[SERVER] Headers:", request.headers);
+
+
             if (!originalFilename) {
+                console.error("[SERVER_ERROR] Missing 'x-original-filename' header.");
                 return NextResponse.json({ error: "Missing 'x-original-filename' header." }, { status: 400 });
             }
             
@@ -42,13 +47,22 @@
             if (isChunked) {
                 const chunkIndex = parseInt(chunkIndexStr!, 10);
                 const totalChunks = parseInt(totalChunksStr!, 10);
+                 console.log(`[SERVER] Processing chunk ${chunkIndex + 1} of ${totalChunks} for ${originalFilename}.`);
                 
                 if (isNaN(chunkIndex) || isNaN(totalChunks)) {
+                    console.error("[SERVER_ERROR] Invalid chunking headers.");
                     return NextResponse.json({ error: "Invalid chunking headers." }, { status: 400 });
                 }
                 
                 // Save chunk to a temporary file
                 const chunkBuffer = await request.arrayBuffer();
+                console.log("[SERVER] Chunk body size:", chunkBuffer.byteLength, "bytes");
+
+                if (chunkBuffer.byteLength === 0) {
+                     console.warn("[SERVER] Received empty chunk.");
+                     return NextResponse.json({ error: "Received empty chunk data." }, { status: 400 });
+                }
+
                 const chunkFilePath = path.join(TMP_DIR, `${originalFilename}.part_${chunkIndex}`);
                 await fs.writeFile(chunkFilePath, Buffer.from(chunkBuffer));
                 
@@ -81,7 +95,7 @@
                     // Clean up the assembled file
                     await fs.unlink(assembledFilePath);
 
-                    console.log(`[SERVER] Relay upload successful. Saved '${originalFilename}' to Firebase Storage.`);
+                    console.log(`[SERVER] Relay upload successful. Assembled and saved '${originalFilename}' to Firebase Storage.`);
                     // Notify clients
                     const channel = new BroadcastChannel('new-upload');
                     channel.postMessage({ filename: originalFilename });
@@ -90,12 +104,15 @@
                     return NextResponse.json({ message: "File assembled and uploaded successfully.", filename: originalFilename }, { status: 200 });
 
                 } else {
-                    return NextResponse.json({ message: `Chunk ${chunkIndex}/${totalChunks-1} received.` }, { status: 202 }); // 202 Accepted
+                    return NextResponse.json({ message: `Chunk ${chunkIndex + 1}/${totalChunks} received.` }, { status: 202 }); // 202 Accepted
                 }
 
             } else {
                 // --- Original logic for non-chunked uploads ---
+                console.log(`[SERVER] Processing non-chunked upload for ${originalFilename}.`);
                 const fileBuffer = await request.arrayBuffer();
+                console.log("[SERVER] Body size:", fileBuffer.byteLength, "bytes");
+
 
                 if (!fileBuffer || fileBuffer.byteLength === 0) {
                     console.warn("[SERVER] Upload attempt with empty file rejected.");
